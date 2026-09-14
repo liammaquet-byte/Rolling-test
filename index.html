@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Browser-based rectangular sheet nesting with DXF export." />
+  <title>Sheet Nester</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">RECTANGULAR SHEET NESTING</p>
+        <h1>Sheet Nester</h1>
+        <p class="subtitle">Find a compact layout for rectangular parts, then export clean DXF outlines.</p>
+      </div>
+      <div class="status-pill" id="statusPill">Ready</div>
+    </header>
+
+    <section class="panel controls-panel">
+      <div class="section-heading">
+        <div>
+          <h2>Sheet</h2>
+          <p>Set stock size and cutting allowances.</p>
+        </div>
+      </div>
+
+      <div class="sheet-grid">
+        <label>
+          <span>Sheet width</span>
+          <input id="sheetWidth" type="number" min="0.001" step="any" value="2440" />
+        </label>
+        <label>
+          <span>Sheet height</span>
+          <input id="sheetHeight" type="number" min="0.001" step="any" value="1220" />
+        </label>
+        <label>
+          <span>Units</span>
+          <select id="units">
+            <option value="mm" selected>mm</option>
+            <option value="in">inches</option>
+          </select>
+        </label>
+        <label>
+          <span>Edge margin</span>
+          <input id="margin" type="number" min="0" step="any" value="10" />
+        </label>
+        <label>
+          <span>Part gap / kerf</span>
+          <input id="gap" type="number" min="0" step="any" value="3" />
+        </label>
+        <label class="check-label">
+          <input id="allowRotate" type="checkbox" checked />
+          <span>Allow 90° rotation</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel parts-panel">
+      <div class="section-heading parts-heading">
+        <div>
+          <h2>Parts</h2>
+          <p>Add rectangular part sizes and quantities.</p>
+        </div>
+        <div class="heading-actions">
+          <button type="button" class="button secondary" id="addPartBtn">+ Add part</button>
+          <button type="button" class="button ghost" id="clearPartsBtn">Clear</button>
+        </div>
+      </div>
+
+      <div class="parts-table-wrap">
+        <table class="parts-table">
+          <thead>
+            <tr>
+              <th>Width</th>
+              <th>Height</th>
+              <th>Qty</th>
+              <th class="rotate-column">Rotate</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="partsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="action-row">
+        <button type="button" class="button primary" id="nestBtn">Nest parts</button>
+        <button type="button" class="button secondary" id="exampleBtn">Load example</button>
+      </div>
+      <div id="errorBox" class="error-box" hidden></div>
+    </section>
+
+    <section class="panel results-panel" id="resultsPanel" hidden>
+      <div class="section-heading result-heading">
+        <div>
+          <h2>Layout</h2>
+          <p id="resultSummary"></p>
+        </div>
+        <div class="export-actions">
+          <button type="button" class="button secondary" id="exportSheetBtn">Export shown sheet DXF</button>
+          <button type="button" class="button primary" id="exportAllBtn">Export all sheets DXF</button>
+        </div>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="sheet-nav">
+        <button type="button" class="icon-button" id="prevSheetBtn" aria-label="Previous sheet">←</button>
+        <strong id="sheetIndicator">Sheet 1 of 1</strong>
+        <button type="button" class="icon-button" id="nextSheetBtn" aria-label="Next sheet">→</button>
+      </div>
+
+      <div class="preview-wrap">
+        <svg id="preview" viewBox="0 0 100 50" role="img" aria-label="Nested sheet preview"></svg>
+      </div>
+      <p class="preview-note">The preview shows the sheet boundary for context. DXF exports contain part outlines only.</p>
+    </section>
+
+    <footer>
+      <span>Runs entirely in your browser. No files or dimensions are uploaded.</span>
+    </footer>
+  </main>
+
+  <template id="partRowTemplate">
+    <tr class="part-row">
+      <td><input class="part-width" type="number" min="0.001" step="any" placeholder="600" /></td>
+      <td><input class="part-height" type="number" min="0.001" step="any" placeholder="400" /></td>
+      <td><input class="part-qty" type="number" min="1" step="1" value="1" /></td>
+      <td class="rotate-column"><input class="part-rotate" type="checkbox" checked aria-label="Allow this part to rotate" /></td>
+      <td><button type="button" class="remove-part" aria-label="Remove part">×</button></td>
+    </tr>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
