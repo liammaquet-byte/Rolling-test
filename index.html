@@ -58,7 +58,13 @@
             <h2>DXF shapes</h2>
             <p>Each DXF file is treated as one part. The largest closed profile is used for collision/nesting; all supported geometry in that file is preserved on export.</p>
           </div>
-          <div class="heading-actions"><label class="button secondary file-button">+ Import DXF<input id="dxfFiles" type="file" accept=".dxf,text/plain,application/dxf" multiple /></label><button type="button" class="button ghost" id="clearDxfBtn">Clear</button></div>
+          <div class="heading-actions"><button type="button" class="button ghost" id="clearDxfBtn">Clear</button></div>
+        </div>
+
+        <div class="dxf-upload-box">
+          <label for="dxfFiles" class="dxf-upload-label">Choose DXF files</label>
+          <input id="dxfFiles" class="dxf-file-input" type="file" accept=".dxf,text/plain,application/dxf" multiple />
+          <p>Select one or more ASCII DXF files from this device or Files. Each file is treated as one part shape.</p>
         </div>
 
         <div class="privacy-note"><strong>Local processing:</strong> DXFs are read with the browser File API. Nothing is uploaded, stored remotely, or sent to a server.</div>
