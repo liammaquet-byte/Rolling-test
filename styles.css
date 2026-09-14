@@ -248,3 +248,16 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   .export-actions .button { flex: 1 1 180px; }
   .preview-wrap { min-height: 250px; padding: 9px; }
 }
+
+.mode-tabs { display:flex; gap:8px; margin-bottom:22px; border-bottom:1px solid var(--line); }
+.mode-tab { border:0; background:transparent; padding:10px 14px 12px; margin-bottom:-1px; border-bottom:2px solid transparent; color:var(--muted); cursor:pointer; font-weight:800; }
+.mode-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.file-button { display:inline-flex; align-items:center; cursor:pointer; }
+.file-button input { display:none; }
+.privacy-note { border:1px solid #b9d4ff; background:#f2f7ff; border-radius:10px; padding:11px 13px; margin-bottom:16px; color:#24466f; font-size:.88rem; }
+.dxf-options { display:grid; grid-template-columns:180px 220px 1fr; gap:14px; align-items:end; margin-bottom:16px; }
+.field-help { margin:0 0 4px; color:var(--muted); font-size:.8rem; line-height:1.4; }
+.empty-state { border:1px dashed var(--line); border-radius:12px; padding:24px; color:var(--muted); text-align:center; background:#fbfcfd; }
+.dxf-name { font-weight:750; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dxf-sub { display:block; margin-top:3px; color:var(--muted); font-size:.76rem; font-weight:500; }
+@media (max-width: 760px) { .dxf-options { grid-template-columns:1fr 1fr; } .field-help { grid-column:1 / -1; } }
