@@ -341,8 +341,9 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
 
         <div class="dxf-options">
           <label><span>Rotation increment</span><select id="rotationStep"><option value="90" selected>90°</option><option value="45">45°</option><option value="30">30°</option><option value="15">15°</option><option value="10">10°</option><option value="5">5°</option></select></label>
+          <label><span>Optimisation</span><select id="optimisation"><option value="fast">Fast</option><option value="balanced" selected>Balanced</option><option value="fine">Fine</option></select></label>
           <label><span>Curve collision tolerance</span><input id="curveTolerance" type="number" min="0.000001" step="any" value="0.1" /></label>
-          <p class="field-help">Tolerance only controls temporary curve sampling used for collision tests. Exported arcs/circles/polylines retain their original geometry.</p>
+          <p class="field-help">Packing runs in a background worker so the page stays responsive. Sheet count is the first priority, then the occupied corner envelope. Fine mode tries more orders/heuristics. Curve sampling is collision-only; exported CAD geometry is preserved.</p>
         </div>
 
         <div id="dxfEmpty" class="empty-state">Import one or more ASCII DXF files. Closed profiles may be a closed polyline/circle or a connected chain of LINE, ARC, and open polyline entities.</div>
@@ -352,7 +353,7 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
             <tbody id="dxfBody"></tbody>
           </table>
         </div>
-        <div class="action-row"><button type="button" class="button primary" id="nestDxfBtn">Nest DXF shapes</button></div>
+        <div class="action-row"><button type="button" class="button primary" id="nestDxfBtn">Nest DXF shapes</button><button type="button" class="button ghost" id="cancelDxfBtn" hidden>Cancel</button><span id="dxfProgress" class="field-help" aria-live="polite"></span></div>
       </div>
       <div id="errorBox" class="error-box" hidden></div>
     </section>
@@ -365,7 +366,7 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
       <div class="stats" id="stats"></div>
       <div class="sheet-nav"><button type="button" class="icon-button" id="prevSheetBtn" aria-label="Previous sheet">←</button><strong id="sheetIndicator">Sheet 1 of 1</strong><button type="button" class="icon-button" id="nextSheetBtn" aria-label="Next sheet">→</button></div>
       <div class="preview-wrap"><svg id="preview" viewBox="0 0 100 50" role="img" aria-label="Nested sheet preview"></svg></div>
-      <p class="preview-note">The sheet boundary is shown for context only. DXF exports contain part geometry only.</p>
+      <p class="preview-note">The sheet boundary is shown for context only. DXF exports contain part geometry only and are written as conservative AutoCAD R12 ASCII DXF.</p>
     </section>
 
     <footer>Runs entirely in your browser. No files, dimensions, or layouts are uploaded.</footer>
@@ -384,11 +385,11 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
     sheetWidth: $('#sheetWidth'), sheetHeight: $('#sheetHeight'), units: $('#units'), margin: $('#margin'), gap: $('#gap'), allowRotate: $('#allowRotate'),
     rectModeBtn: $('#rectModeBtn'), dxfModeBtn: $('#dxfModeBtn'), rectMode: $('#rectMode'), dxfMode: $('#dxfMode'),
     partsBody: $('#partsBody'), rowTemplate: $('#partRowTemplate'), addPartBtn: $('#addPartBtn'), clearPartsBtn: $('#clearPartsBtn'), nestBtn: $('#nestBtn'), exampleBtn: $('#exampleBtn'),
-    dxfFiles: $('#dxfFiles'), clearDxfBtn: $('#clearDxfBtn'), dxfBody: $('#dxfBody'), dxfEmpty: $('#dxfEmpty'), dxfTableWrap: $('#dxfTableWrap'), rotationStep: $('#rotationStep'), curveTolerance: $('#curveTolerance'), nestDxfBtn: $('#nestDxfBtn'),
+    dxfFiles: $('#dxfFiles'), clearDxfBtn: $('#clearDxfBtn'), dxfBody: $('#dxfBody'), dxfEmpty: $('#dxfEmpty'), dxfTableWrap: $('#dxfTableWrap'), rotationStep: $('#rotationStep'), optimisation: $('#optimisation'), curveTolerance: $('#curveTolerance'), nestDxfBtn: $('#nestDxfBtn'), cancelDxfBtn: $('#cancelDxfBtn'), dxfProgress: $('#dxfProgress'),
     errorBox: $('#errorBox'), resultsPanel: $('#resultsPanel'), resultSummary: $('#resultSummary'), stats: $('#stats'), preview: $('#preview'), sheetIndicator: $('#sheetIndicator'), prevSheetBtn: $('#prevSheetBtn'), nextSheetBtn: $('#nextSheetBtn'), exportSheetBtn: $('#exportSheetBtn'), exportAllBtn: $('#exportAllBtn'), statusPill: $('#statusPill')
   };
 
-  let state = { mode: 'rect', result: null, sheetIndex: 0, settings: null, imported: [] };
+  let state = { mode: 'rect', result: null, sheetIndex: 0, settings: null, imported: [], dxfWorker: null };
   const EPS = 1e-7;
 
   class MaxRectsBin {
@@ -578,16 +579,96 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   async function importDxfFiles(fileList){ clearError(); const tolerance=readTolerance(); for(const file of [...fileList]){ try{const text=await file.text(); const parsed=parseDxf(text,file.name,tolerance); state.imported.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),file:parsed,qty:1,rotate:true});}catch(e){showError(e.message||String(e));} } els.dxfFiles.value=''; renderDxfList(); }
   function readTolerance(){const t=+els.curveTolerance.value;if(!(t>0))throw new Error('Curve collision tolerance must be greater than zero.');return t;}
   function renderDxfList(){ els.dxfEmpty.hidden=state.imported.length>0; els.dxfTableWrap.hidden=!state.imported.length; els.dxfBody.innerHTML=''; for(const item of state.imported){const tr=document.createElement('tr');tr.innerHTML=`<td><div class="dxf-name"></div></td><td>${fmt(item.file.width)} × ${fmt(item.file.height)}</td><td><input class="dxf-qty" type="number" min="1" step="1" value="${item.qty}"></td><td class="rotate-column"><input class="dxf-rotate" type="checkbox" ${item.rotate?'checked':''}></td><td><button type="button" class="remove-part" aria-label="Remove DXF">×</button></td>`; const name=tr.querySelector('.dxf-name'); name.textContent=item.file.name; const sub=document.createElement('span');sub.className='dxf-sub';sub.textContent=`${item.file.entityCount} preserved geometr${item.file.entityCount===1?'y':'ies'}`;name.appendChild(sub);tr.querySelector('.dxf-qty').onchange=e=>item.qty=Math.max(1,parseInt(e.target.value,10)||1);tr.querySelector('.dxf-rotate').onchange=e=>item.rotate=e.target.checked;tr.querySelector('.remove-part').onclick=()=>{state.imported=state.imported.filter(x=>x.id!==item.id);renderDxfList();hideResults();};els.dxfBody.appendChild(tr);} }
-  function readDxfSettings(){const s=commonSettings(),tolerance=readTolerance(),rotationStep=+els.rotationStep.value;if(!state.imported.length)throw new Error('Import at least one DXF part first.'); for(const item of state.imported){if(!Number.isInteger(item.qty)||item.qty<1)throw new Error(`${item.file.name}: quantity must be 1 or more.`);} return{...s,mode:'dxf',tolerance,rotationStep,parts:state.imported};}
+  function readDxfSettings(){const s=commonSettings(),tolerance=readTolerance(),rotationStep=+els.rotationStep.value;if(!state.imported.length)throw new Error('Import at least one DXF part first.'); for(const item of state.imported){if(!Number.isInteger(item.qty)||item.qty<1)throw new Error(`${item.file.name}: quantity must be 1 or more.`);} return{...s,mode:'dxf',tolerance,rotationStep,optimisation:els.optimisation.value,parts:state.imported};}
 
   function buildOrientations(file,canRotate,step){ const src=file.outerPoints.map(p=>({x:p.x-file.baseMinX,y:p.y-file.baseMinY})), angles=canRotate?Array.from({length:Math.ceil(360/step)},(_,i)=>(i*step)%360):[0], seen=new Set(), out=[]; for(const angle of angles){const key=((angle%360)+360)%360;if(seen.has(key))continue;seen.add(key);const rp=src.map(p=>rotatePoint(p,key)),bb=bounds(rp),points=rp.map(p=>({x:p.x-bb.minX,y:p.y-bb.minY}));out.push({angle:key,points,w:bb.w,h:bb.h,rotMinX:bb.minX,rotMinY:bb.minY});} return out; }
   function rotatePoint(p,deg){const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return{x:p.x*c-p.y*s,y:p.x*s+p.y*c};}
   function buildDxfInstances(s){const out=[];let serial=1;for(let ti=0;ti<s.parts.length;ti++){const item=s.parts[ti],orientations=buildOrientations(item.file,s.globalRotate&&item.rotate,s.rotationStep);for(let q=0;q<item.qty;q++)out.push({id:serial++,typeIndex:ti,file:item.file,orientations,area:item.file.area,maxSide:Math.max(item.file.width,item.file.height),bboxArea:item.file.width*item.file.height});}return out;}
   function dxfOrderings(parts){return[[...parts].sort((a,b)=>b.area-a.area||b.maxSide-a.maxSide),[...parts].sort((a,b)=>b.bboxArea-a.bboxArea||b.area-a.area),[...parts].sort((a,b)=>b.maxSide-a.maxSide||b.area-a.area)];}
-  function nestDxf(s){const instances=buildDxfInstances(s);if(instances.length>120)throw new Error('This browser nester currently limits DXF jobs to 120 part instances to keep collision testing responsive.');let best=null,attempts=0;for(const order of dxfOrderings(instances)){attempts++;const r=packPolygons(order,s);if(!best||comparePacked(r,best)<0)best=r;}best.attempts=attempts;return best;}
+  const DXF_WORKER_SOURCE = String.raw`
+'use strict';
+const EPS=1e-7;
+function bounds(ps){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of ps){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY,w:maxX-minX,h:maxY-minY};}
+function rot(p,d){const a=d*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return{x:p.x*c-p.y*s,y:p.x*s+p.y*c};}
+function orientations(type,step,allow){const src=type.points,angles=allow?Array.from({length:Math.ceil(360/step)},(_,i)=>(i*step)%360):[0],out=[],seen=new Set();for(const angle of angles){const rp=src.map(p=>rot(p,angle)),bb=bounds(rp),o={angle,points:rp.map(p=>({x:p.x-bb.minX,y:p.y-bb.minY})),w:bb.w,h:bb.h,rotMinX:bb.minX,rotMinY:bb.minY};const key=Math.round(o.w*1e5)+','+Math.round(o.h*1e5)+','+Math.round(angle%180*1e3);if(!seen.has(key)){seen.add(key);out.push(o);}}return out;}
+function intersects(a,b){return !(b.x>=a.x+a.w-EPS||b.x+b.w<=a.x+EPS||b.y>=a.y+a.h-EPS||b.y+b.h<=a.y+EPS);}
+function prune(rs){const c=rs.filter(r=>r.w>EPS&&r.h>EPS),keep=new Array(c.length).fill(true);for(let i=0;i<c.length;i++)for(let j=0;j<c.length;j++)if(i!==j&&keep[i]&&c[i].x>=c[j].x-EPS&&c[i].y>=c[j].y-EPS&&c[i].x+c[i].w<=c[j].x+c[j].w+EPS&&c[i].y+c[i].h<=c[j].y+c[j].h+EPS)keep[i]=false;return c.filter((_,i)=>keep[i]);}
+class Bin{constructor(w,h,heur){this.w=w;this.h=h;this.heur=heur;this.free=[{x:0,y:0,w,h}];this.used=[];}score(w,h){let best=null;for(const f of this.free){if(w>f.w+EPS||h>f.h+EPS)continue;const dw=f.w-w,dh=f.h-h,sh=Math.min(dw,dh),lo=Math.max(dw,dh),ar=f.w*f.h-w*h;let a,b;if(this.heur==='area')[a,b]=[ar,sh];else if(this.heur==='long')[a,b]=[lo,sh];else if(this.heur==='bottom')[a,b]=[f.y+h,f.x+w];else [a,b]=[sh,lo];const c={x:f.x,y:f.y,w,h,a,b};if(!best||a<best.a-EPS||(Math.abs(a-best.a)<EPS&&b<best.b-EPS))best=c;}return best;}place(r){const n=[];for(const f of this.free){if(!intersects(f,r)){n.push(f);continue;}if(r.x<f.x+f.w&&r.x+r.w>f.x){if(r.y>f.y&&r.y<f.y+f.h)n.push({x:f.x,y:f.y,w:f.w,h:r.y-f.y});if(r.y+r.h<f.y+f.h)n.push({x:f.x,y:r.y+r.h,w:f.w,h:f.y+f.h-r.y-r.h});}if(r.y<f.y+f.h&&r.y+r.h>f.y){if(r.x>f.x&&r.x<f.x+f.w)n.push({x:f.x,y:f.y,w:r.x-f.x,h:f.h});if(r.x+r.w<f.x+f.w)n.push({x:r.x+r.w,y:f.y,w:f.x+f.w-r.x-r.w,h:f.h});}}this.free=prune(n);this.used.push(r);}}
+function shuffle(a,seed){a=[...a];let s=seed>>>0;const rnd=()=>((s=(1664525*s+1013904223)>>>0)/4294967296);for(let i=a.length-1;i;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function resultScore(r){return [r.sheets.length,r.envelope,r.lastCount?-r.lastCount:0];}
+function better(a,b){if(!b)return true;const x=resultScore(a),y=resultScore(b);for(let i=0;i<x.length;i++)if(Math.abs(x[i]-y[i])>EPS)return x[i]<y[i];return false;}
+function pack(order,types,s,heur){const W=s.sheetW-2*s.margin+s.gap,H=s.sheetH-2*s.margin+s.gap,bins=[];for(const inst of order){let best=null;for(let bi=0;bi<bins.length;bi++){for(const o of inst.os){const sc=bins[bi].score(o.w+s.gap,o.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi,bin:bins[bi],sc,o};}if(best)break;}if(!best){const bin=new Bin(W,H,heur);bins.push(bin);for(const o of inst.os){const sc=bin.score(o.w+s.gap,o.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi:bins.length-1,bin,sc,o};}}if(!best)throw new Error(types[inst.t].name+' does not fit the usable sheet area at the permitted rotations.');const r={x:best.sc.x,y:best.sc.y,w:best.o.w+s.gap,h:best.o.h+s.gap,id:inst.id,t:inst.t,o:best.o};best.bin.place(r);}
+const sheets=bins.map((b,si)=>({sheetIndex:si,placements:b.used.map(r=>({id:r.id,typeIndex:r.t,x:r.x+s.margin,y:r.y+s.margin,orientation:r.o,polygon:r.o.points.map(p=>({x:p.x+r.x+s.margin,y:p.y+r.y+s.margin}))})),partArea:b.used.reduce((z,r)=>z+types[r.t].area,0)}));let envelope=0;for(const sh of sheets){let mx=s.margin,my=s.margin;for(const p of sh.placements){mx=Math.max(mx,p.x+p.orientation.w);my=Math.max(my,p.y+p.orientation.h);}envelope+=(mx-s.margin)*(my-s.margin);}return{sheets,envelope,lastCount:sheets.at(-1)?.placements.length||0};}
+onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let t=0;t<types.length;t++){const ty=types[t],os=orientations(ty,s.rotationStep,s.globalRotate&&ty.rotate);for(let q=0;q<ty.qty;q++)instances.push({id:id++,t,os,area:ty.area,bbox:ty.width*ty.height,max:Math.max(ty.width,ty.height)});}const orders=[ [...instances].sort((a,b)=>b.bbox-a.bbox||b.area-a.area), [...instances].sort((a,b)=>b.max-a.max||b.area-a.area), [...instances].sort((a,b)=>b.area-a.area||b.max-a.max) ];const extra=s.optimisation==='fine'?8:s.optimisation==='balanced'?3:0;for(let i=0;i<extra;i++)orders.push(shuffle(instances,7919*(i+1)+instances.length));const heurs=s.optimisation==='fast'?['bottom','short']:['bottom','short','area','long'];let best=null,total=orders.length*heurs.length,done=0;for(const order of orders)for(const h of heurs){const r=pack(order,types,s,h);done++;if(better(r,best))best=r;postMessage({kind:'progress',done,total,bestSheets:best.sheets.length});}postMessage({kind:'done',result:{...best,totalParts:instances.length,attempts:total}});}catch(err){postMessage({kind:'error',message:err?.message||String(err)});}};
+`;
 
-  function packPolygons(parts,s){const sheets=[];for(const part of parts){let choice=null;for(let si=0;si<sheets.length;si++){const c=findPolygonPlacement(part,sheets[si],s);if(c&&(!choice||placementScore(c)<placementScore(choice)))choice={...c,sheetIndex:si};}if(!choice){const sh={sheetIndex:sheets.length,placements:[],partArea:0};const c=findPolygonPlacement(part,sh,s);if(!c)throw new Error(`${part.file.name} does not fit the usable sheet area at the permitted rotations.`);sheets.push(sh);choice={...c,sheetIndex:sheets.length-1};}const sh=sheets[choice.sheetIndex],placement={kind:'dxf',id:part.id,typeIndex:part.typeIndex,file:part.file,orientation:choice.orientation,x:choice.x,y:choice.y,polygon:choice.polygon};sh.placements.push(placement);sh.partArea+=part.area;}
+  function dxfWorkerPayload(s){
+    return {settings:{sheetW:s.sheetW,sheetH:s.sheetH,margin:s.margin,gap:s.gap,globalRotate:s.globalRotate,rotationStep:s.rotationStep,optimisation:s.optimisation},types:s.parts.map(p=>({name:p.file.name,qty:p.qty,rotate:p.rotate,area:p.file.area,width:p.file.width,height:p.file.height,baseMinX:p.file.baseMinX,baseMinY:p.file.baseMinY,points:p.file.outerPoints.map(q=>({x:q.x-p.file.baseMinX,y:q.y-p.file.baseMinY}))}))};
+  }
+  function hydrateWorkerResult(raw,s){
+    const sheets=raw.sheets.map(sh=>({sheetIndex:sh.sheetIndex,partArea:sh.partArea,placements:sh.placements.map(p=>({kind:'dxf',id:p.id,typeIndex:p.typeIndex,file:s.parts[p.typeIndex].file,x:p.x,y:p.y,orientation:p.orientation,polygon:p.polygon}))}));
+    const result=summarizeResult(sheets,s,raw.totalParts,'dxf');result.attempts=raw.attempts;result.engine='background MaxRects, sheet-first';return result;
+  }
+  function cancelDxfNest(){if(state.dxfWorker){state.dxfWorker.terminate();state.dxfWorker=null;}els.nestDxfBtn.disabled=false;els.cancelDxfBtn.hidden=true;els.dxfProgress.textContent='Cancelled.';els.statusPill.textContent='Ready';}
+  function nestDxfAsync(s){
+    if(state.dxfWorker)state.dxfWorker.terminate();
+    const url=URL.createObjectURL(new Blob([DXF_WORKER_SOURCE],{type:'text/javascript'})),worker=new Worker(url);URL.revokeObjectURL(url);state.dxfWorker=worker;
+    els.nestDxfBtn.disabled=true;els.cancelDxfBtn.hidden=false;els.dxfProgress.textContent='Starting background optimiser…';els.statusPill.textContent='Calculating…';
+    worker.onmessage=e=>{const m=e.data;if(m.kind==='progress'){els.dxfProgress.textContent=`Attempt ${m.done} of ${m.total} · best so far: ${m.bestSheets} sheet${m.bestSheets===1?'':'s'}`;return;}if(m.kind==='error'){showError(m.message);cancelDxfNest();return;}if(m.kind==='done'){const result=hydrateWorkerResult(m.result,s);state.result=result;state.settings=s;state.sheetIndex=0;state.dxfWorker=null;worker.terminate();els.nestDxfBtn.disabled=false;els.cancelDxfBtn.hidden=true;els.dxfProgress.textContent=`Finished ${result.attempts} packing attempts.`;els.statusPill.textContent='Nested';renderResults();}};
+    worker.onerror=e=>{showError('Background optimiser failed: '+(e.message||'unknown worker error'));cancelDxfNest();};worker.postMessage(dxfWorkerPayload(s));
+  }
+
+  function nestDxf(s){
+    const instances=buildDxfInstances(s);
+    if(instances.length>120)throw new Error('This browser nester currently limits DXF jobs to 120 part instances to keep collision testing responsive.');
+    let best=null,attempts=0;
+    // Free-form bottom-left packing is good at interlocking irregular shapes, but can
+    // occasionally create a low staggered row that blocks the rest of a sheet. Try
+    // several orders, then also try a conservative row/shelf pack. The result using
+    // the fewest sheets wins.
+    const orders=dxfOrderings(instances);
+    for(const order of orders){attempts++;const r=packPolygons(order,s);if(!best||comparePacked(r,best)<0)best=r;}
+    for(const order of orders){attempts++;const r=packPolygonsShelves(order,s);if(!best||comparePacked(r,best)<0)best=r;}
+    best.attempts=attempts;return best;
+  }
+
+  function makeDxfPlacement(part,choice){return{kind:'dxf',id:part.id,typeIndex:part.typeIndex,file:part.file,orientation:choice.orientation,x:choice.x,y:choice.y,polygon:choice.polygon};}
+
+  function packPolygons(parts,s){const sheets=[];for(const part of parts){let choice=null;
+      // First-fit by sheet: do not move on to a later sheet while an earlier sheet
+      // still has a valid placement for this part.
+      for(let si=0;si<sheets.length;si++){const c=findPolygonPlacement(part,sheets[si],s);if(c){choice={...c,sheetIndex:si};break;}}
+      if(!choice){const sh={sheetIndex:sheets.length,placements:[],partArea:0};const c=findPolygonPlacement(part,sh,s);if(!c)throw new Error(`${part.file.name} does not fit the usable sheet area at the permitted rotations.`);sheets.push(sh);choice={...c,sheetIndex:sheets.length-1};}
+      const sh=sheets[choice.sheetIndex];sh.placements.push(makeDxfPlacement(part,choice));sh.partArea+=part.area;}
     return summarizeResult(sheets,s,parts.length,'dxf');}
+
+  function shelfOrientationScore(o,s){
+    const uw=s.sheetW-2*s.margin,uh=s.sheetH-2*s.margin;
+    const cols=Math.max(0,Math.floor((uw+s.gap)/(o.w+s.gap)));
+    const rows=Math.max(0,Math.floor((uh+s.gap)/(o.h+s.gap)));
+    const capacity=cols*rows;
+    return[-capacity,o.w*o.h,o.h,o.w];
+  }
+  function compareTuple(a,b){for(let i=0;i<a.length;i++){if(Math.abs(a[i]-b[i])>EPS)return a[i]-b[i];}return 0;}
+  function preferredShelfOrientations(part,s){return part.orientations.filter(o=>o.w<=s.sheetW-2*s.margin+EPS&&o.h<=s.sheetH-2*s.margin+EPS).sort((a,b)=>compareTuple(shelfOrientationScore(a,s),shelfOrientationScore(b,s)));}
+  function packPolygonsShelves(parts,s){
+    const sheets=[];let sh=null,cursorX=s.margin,cursorY=s.margin,rowH=0;
+    const newSheet=()=>{sh={sheetIndex:sheets.length,placements:[],partArea:0};sheets.push(sh);cursorX=s.margin;cursorY=s.margin;rowH=0;};
+    newSheet();
+    for(const part of parts){const os=preferredShelfOrientations(part,s);if(!os.length)throw new Error(`${part.file.name} does not fit the usable sheet area at the permitted rotations.`);let placed=null;
+      // Try the current row using the orientation that gives the best whole-sheet
+      // capacity. Bounding boxes are deliberately used for this fallback: it is
+      // conservative, fast, and cannot overlap the true profile.
+      for(const o of os){if(cursorX+o.w<=s.sheetW-s.margin+EPS&&cursorY+o.h<=s.sheetH-s.margin+EPS){placed={o,x:cursorX,y:cursorY};break;}}
+      if(!placed){cursorX=s.margin;cursorY+=rowH+s.gap;rowH=0;for(const o of os){if(cursorX+o.w<=s.sheetW-s.margin+EPS&&cursorY+o.h<=s.sheetH-s.margin+EPS){placed={o,x:cursorX,y:cursorY};break;}}}
+      if(!placed){newSheet();for(const o of os){if(cursorX+o.w<=s.sheetW-s.margin+EPS&&cursorY+o.h<=s.sheetH-s.margin+EPS){placed={o,x:cursorX,y:cursorY};break;}}}
+      if(!placed)throw new Error(`${part.file.name} does not fit the usable sheet area at the permitted rotations.`);
+      const polygon=placed.o.points.map(p=>({x:p.x+placed.x,y:p.y+placed.y})),choice={orientation:placed.o,x:placed.x,y:placed.y,polygon};
+      sh.placements.push(makeDxfPlacement(part,choice));sh.partArea+=part.area;cursorX+=placed.o.w+s.gap;rowH=Math.max(rowH,placed.o.h);
+    }
+    if(sheets.length&&sheets.at(-1).placements.length===0)sheets.pop();
+    return summarizeResult(sheets,s,parts.length,'dxf');
+  }
   function placementScore(c){return c.y*1e9+c.x*1e5+(c.y+c.orientation.h)*100+(c.x+c.orientation.w);}
   function findPolygonPlacement(part,sheet,s){let best=null;for(const o of part.orientations){if(o.w>s.sheetW-2*s.margin+EPS||o.h>s.sheetH-2*s.margin+EPS)continue;const candidates=polygonCandidates(o,sheet,s);for(const c of candidates){const poly=o.points.map(p=>({x:p.x+c.x,y:p.y+c.y}));if(!insideSheet(poly,s))continue;if(sheet.placements.some(p=>polygonsTooClose(poly,p.polygon,s.gap)))continue;const found={x:c.x,y:c.y,orientation:o,polygon:poly};if(!best||placementScore(found)<placementScore(best))best=found;if(best&&best.y<=s.margin+EPS&&best.x<=s.margin+EPS)break;}}return best;}
   function polygonCandidates(o,sheet,s){const raw=[{x:s.margin,y:s.margin},{x:s.sheetW-s.margin-o.w,y:s.margin},{x:s.margin,y:s.sheetH-s.margin-o.h}];for(const p of sheet.placements){const bb=bounds(p.polygon);raw.push({x:bb.maxX+s.gap,y:bb.minY},{x:bb.minX,y:bb.maxY+s.gap},{x:bb.maxX+s.gap,y:Math.max(s.margin,bb.maxY-o.h)},{x:Math.max(s.margin,bb.maxX-o.w),y:bb.maxY+s.gap});const a=sampleForCandidates(p.polygon,20),b=sampleForCandidates(o.points,20);for(const q of a)for(const r of b){raw.push({x:q.x-r.x+s.gap,y:q.y-r.y},{x:q.x-r.x-s.gap,y:q.y-r.y},{x:q.x-r.x,y:q.y-r.y+s.gap},{x:q.x-r.x,y:q.y-r.y-s.gap});}}
@@ -611,36 +692,38 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   function bounds(pts){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of pts){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY,w:maxX-minX,h:maxY-minY};}
 
   // ---------- Rendering ----------
-  function renderResults(){const {result,settings}=state;if(!result||!settings)return;state.sheetIndex=Math.min(state.sheetIndex,result.sheets.length-1);const current=result.sheets[state.sheetIndex],sheetArea=settings.sheetW*settings.sheetH,util=current.partArea/sheetArea;els.resultsPanel.hidden=false;els.resultSummary.textContent=result.mode==='dxf'?`${result.totalParts} imported part${result.totalParts===1?'':'s'} placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. Best of ${result.attempts} shape-packing attempts.`:`${result.totalParts} parts placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. Best of ${result.attempts} packing attempts.`;els.stats.innerHTML=[statHtml('Sheets',result.sheets.length),statHtml(result.mode==='dxf'?'Profile area use':'Overall material use',`${(result.overallUtilization*100).toFixed(1)}%`),statHtml('Shown sheet use',`${(util*100).toFixed(1)}%`),statHtml('Shown sheet waste',`${((1-util)*100).toFixed(1)}%`)].join('');els.sheetIndicator.textContent=`Sheet ${state.sheetIndex+1} of ${result.sheets.length}`;els.prevSheetBtn.disabled=state.sheetIndex===0;els.nextSheetBtn.disabled=state.sheetIndex===result.sheets.length-1;renderPreview(current,settings);els.resultsPanel.scrollIntoView({behavior:'smooth',block:'start'});}
+  function renderResults(){const {result,settings}=state;if(!result||!settings)return;state.sheetIndex=Math.min(state.sheetIndex,result.sheets.length-1);const current=result.sheets[state.sheetIndex],sheetArea=settings.sheetW*settings.sheetH,util=current.partArea/sheetArea;els.resultsPanel.hidden=false;els.resultSummary.textContent=result.mode==='dxf'?`${result.totalParts} imported part${result.totalParts===1?'':'s'} placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. ${result.engine||'Shape packing'}; best of ${result.attempts} attempts.`:`${result.totalParts} parts placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. Best of ${result.attempts} packing attempts.`;els.stats.innerHTML=[statHtml('Sheets',result.sheets.length),statHtml(result.mode==='dxf'?'Profile area use':'Overall material use',`${(result.overallUtilization*100).toFixed(1)}%`),statHtml('Shown sheet use',`${(util*100).toFixed(1)}%`),statHtml('Shown sheet waste',`${((1-util)*100).toFixed(1)}%`)].join('');els.sheetIndicator.textContent=`Sheet ${state.sheetIndex+1} of ${result.sheets.length}`;els.prevSheetBtn.disabled=state.sheetIndex===0;els.nextSheetBtn.disabled=state.sheetIndex===result.sheets.length-1;renderPreview(current,settings);els.resultsPanel.scrollIntoView({behavior:'smooth',block:'start'});}
   function statHtml(label,value){return`<div class="stat"><small>${label}</small><strong>${value}</strong></div>`;}
   function renderPreview(sheet,s){const pad=Math.max(s.sheetW,s.sheetH)*.015;els.preview.setAttribute('viewBox',`${-pad} ${-pad} ${s.sheetW+2*pad} ${s.sheetH+2*pad}`);els.preview.replaceChildren();const sheetRect=svg('rect',{x:0,y:0,width:s.sheetW,height:s.sheetH,fill:'#fff',stroke:'#17212b','stroke-width':Math.max(s.sheetW,s.sheetH)/450});els.preview.appendChild(sheetRect);const palette=['#dce9ff','#e2f4ea','#fff0d4','#f1e4ff','#ffe1e1','#dff4f4','#ececec'];for(const p of sheet.placements){if(p.kind==='rect'){els.preview.appendChild(svg('rect',{x:p.x,y:p.y,width:p.w,height:p.h,fill:palette[p.typeIndex%palette.length],stroke:'#3a4754','stroke-width':Math.max(s.sheetW,s.sheetH)/900,'vector-effect':'non-scaling-stroke'}));}else{const pts=p.polygon.map(q=>`${q.x},${s.sheetH-q.y}`).join(' ');els.preview.appendChild(svg('polygon',{points:pts,fill:palette[p.typeIndex%palette.length],stroke:'#3a4754','stroke-width':Math.max(s.sheetW,s.sheetH)/900,'vector-effect':'non-scaling-stroke','fill-rule':'evenodd'}));}}}
   function svg(tag,attrs){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;}
 
-  // ---------- DXF export ----------
-  function dxfHeader(units){const insunits=units==='in'?1:4;return['0','SECTION','2','HEADER','9','$ACADVER','1','AC1015','9','$INSUNITS','70',String(insunits),'0','ENDSEC','0','SECTION','2','TABLES','0','ENDSEC','0','SECTION','2','ENTITIES'];}
-  function rectDxf(p,xOffset){const y0=-p.y,y1=-(p.y+p.h),pts=[[p.x+xOffset,y0],[p.x+p.w+xOffset,y0],[p.x+p.w+xOffset,y1],[p.x+xOffset,y1]],out=['0','LWPOLYLINE','100','AcDbEntity','8','0','100','AcDbPolyline','90','4','70','1'];for(const q of pts)out.push('10',num(q[0]),'20',num(q[1]));return out;}
+  // ---------- conservative AutoCAD R12 ASCII DXF export ----------
+  function dxfHeader(){return['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','0','ENDSEC','0','SECTION','2','ENTITIES'];}
+  function r12Polyline(points,closed=true,bulges=[]){const out=['0','POLYLINE','8','0','66','1','70',closed?'1':'0'];for(let i=0;i<points.length;i++){const q=points[i];out.push('0','VERTEX','8','0','10',num(q.x),'20',num(q.y),'30','0');if(Math.abs(bulges[i]||0)>1e-12)out.push('42',num(bulges[i]));}out.push('0','SEQEND','8','0');return out;}
+  function rectDxf(p,xOffset){return r12Polyline([{x:p.x+xOffset,y:p.y},{x:p.x+p.w+xOffset,y:p.y},{x:p.x+p.w+xOffset,y:p.y+p.h},{x:p.x+xOffset,y:p.y+p.h}],true);}
   function transformedPoint(x,y,p,xOffset){const file=p.file,o=p.orientation,local={x:x-file.baseMinX,y:y-file.baseMinY},r=rotatePoint(local,o.angle);return{x:r.x-o.rotMinX+p.x+xOffset,y:r.y-o.rotMinY+p.y};}
   function exportEntity(e,p,xOffset){
-    if(e.type==='LINE'){const a=transformedPoint(e.x1,e.y1,p,xOffset),b=transformedPoint(e.x2,e.y2,p,xOffset);return['0','LINE','100','AcDbEntity','8','0','100','AcDbLine','10',num(a.x),'20',num(a.y),'30','0','11',num(b.x),'21',num(b.y),'31','0'];}
-    if(e.type==='CIRCLE'){const c=transformedPoint(e.cx,e.cy,p,xOffset);return['0','CIRCLE','100','AcDbEntity','8','0','100','AcDbCircle','10',num(c.x),'20',num(c.y),'30','0','40',num(e.r)];}
-    if(e.type==='ARC'){const c=transformedPoint(e.cx,e.cy,p,xOffset);return['0','ARC','100','AcDbEntity','8','0','100','AcDbCircle','10',num(c.x),'20',num(c.y),'30','0','40',num(e.r),'100','AcDbArc','50',num(normDeg(e.a0+p.orientation.angle)),'51',num(normDeg(e.a1+p.orientation.angle))];}
-    if(e.type==='LWPOLYLINE'||e.type==='POLYLINE'){const out=['0','LWPOLYLINE','100','AcDbEntity','8','0','100','AcDbPolyline','90',String(e.vertices.length),'70',e.closed?'1':'0'];for(const v of e.vertices){const q=transformedPoint(v.x,v.y,p,xOffset);out.push('10',num(q.x),'20',num(q.y));if(Math.abs(v.bulge||0)>1e-12)out.push('42',num(v.bulge));}return out;}
+    if(e.type==='LINE'){const a=transformedPoint(e.x1,e.y1,p,xOffset),b=transformedPoint(e.x2,e.y2,p,xOffset);return['0','LINE','8','0','10',num(a.x),'20',num(a.y),'30','0','11',num(b.x),'21',num(b.y),'31','0'];}
+    if(e.type==='CIRCLE'){const c=transformedPoint(e.cx,e.cy,p,xOffset);return['0','CIRCLE','8','0','10',num(c.x),'20',num(c.y),'30','0','40',num(e.r)];}
+    if(e.type==='ARC'){const c=transformedPoint(e.cx,e.cy,p,xOffset);return['0','ARC','8','0','10',num(c.x),'20',num(c.y),'30','0','40',num(e.r),'50',num(normDeg(e.a0+p.orientation.angle)),'51',num(normDeg(e.a1+p.orientation.angle))];}
+    if(e.type==='LWPOLYLINE'||e.type==='POLYLINE'){const pts=e.vertices.map(v=>transformedPoint(v.x,v.y,p,xOffset));return r12Polyline(pts,e.closed,e.vertices.map(v=>v.bulge||0));}
     return[];
   }
   function normDeg(a){a%=360;if(a<0)a+=360;return a;}
-  function buildDxf(sheets,s,allSheets){const lines=dxfHeader(s.units),sep=Math.max(s.margin,s.gap,s.sheetW*.05,1);sheets.forEach((sheet,index)=>{const xOffset=allSheets?index*(s.sheetW+sep):0;for(const p of sheet.placements){if(p.kind==='rect')lines.push(...rectDxf(p,xOffset));else for(const e of p.file.entities)lines.push(...exportEntity(e,p,xOffset));}});lines.push('0','ENDSEC','0','EOF');return lines.join('\r\n')+'\r\n';}
-  function downloadText(filename,text){const blob=new Blob([text],{type:'application/dxf;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);}
-  function exportCurrentSheet(){if(!state.result)return;downloadText(`sheet-${state.sheetIndex+1}.dxf`,buildDxf([state.result.sheets[state.sheetIndex]],state.settings,false));}
-  function exportAllSheets(){if(!state.result)return;downloadText('all-sheets.dxf',buildDxf(state.result.sheets,state.settings,true));}
+  function validateR12Dxf(text){const raw=text.replace(/\r/g,'').split('\n').filter((_,i,a)=>!(i===a.length-1&&a[i]===''));if(raw.length%2)throw new Error('DXF validation failed: unmatched group-code/value pair.');if(raw[0]!=='0'||raw[1]!=='SECTION'||raw.at(-2)!=='0'||raw.at(-1)!=='EOF')throw new Error('DXF validation failed: file envelope is incomplete.');for(let i=0;i<raw.length;i+=2){const code=Number(raw[i]);if(!Number.isInteger(code))throw new Error('DXF validation failed: invalid group code.');if([10,11,20,21,30,31,40,42,50,51].includes(code)&&!Number.isFinite(Number(raw[i+1])))throw new Error('DXF validation failed: non-finite geometry value.');}return true;}
+  function buildDxf(sheets,s,allSheets){const lines=dxfHeader(),sep=Math.max(s.margin,s.gap,s.sheetW*.05,1);sheets.forEach((sheet,index)=>{const xOffset=allSheets?index*(s.sheetW+sep):0;for(const p of sheet.placements){if(p.kind==='rect')lines.push(...rectDxf(p,xOffset));else for(const e of p.file.entities)lines.push(...exportEntity(e,p,xOffset));}});lines.push('0','ENDSEC','0','EOF');const text=lines.join('\r\n')+'\r\n';validateR12Dxf(text);return text;}
+  function downloadText(filename,text){const blob=new Blob([text],{type:'application/dxf'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+  function exportCurrentSheet(){if(!state.result)return;try{downloadText(`sheet-${state.sheetIndex+1}-R12.dxf`,buildDxf([state.result.sheets[state.sheetIndex]],state.settings,false));}catch(e){showError(e.message||String(e));}}
+  function exportAllSheets(){if(!state.result)return;try{downloadText('all-sheets-R12.dxf',buildDxf(state.result.sheets,state.settings,true));}catch(e){showError(e.message||String(e));}}
 
-  function runNest(kind){clearError();els.statusPill.textContent='Calculating…';const btn=kind==='dxf'?els.nestDxfBtn:els.nestBtn;btn.disabled=true;requestAnimationFrame(()=>{try{const settings=kind==='dxf'?readDxfSettings():readRectSettings(),result=kind==='dxf'?nestDxf(settings):nestRectangles(settings);state.result=result;state.settings=settings;state.sheetIndex=0;els.statusPill.textContent='Nested';renderResults();}catch(e){showError(e instanceof Error?e.message:String(e));}finally{btn.disabled=false;}});}
+  function runNest(kind){clearError();if(kind==='dxf'){try{nestDxfAsync(readDxfSettings());}catch(e){showError(e instanceof Error?e.message:String(e));}return;}els.statusPill.textContent='Calculating…';els.nestBtn.disabled=true;requestAnimationFrame(()=>{try{const settings=readRectSettings(),result=nestRectangles(settings);state.result=result;state.settings=settings;state.sheetIndex=0;els.statusPill.textContent='Nested';renderResults();}catch(e){showError(e instanceof Error?e.message:String(e));}finally{els.nestBtn.disabled=false;}});}
   function showError(message){els.errorBox.textContent=message;els.errorBox.hidden=false;els.statusPill.textContent='Check inputs';}
   function clearError(){els.errorBox.hidden=true;els.errorBox.textContent='';}
   function hideResults(){els.resultsPanel.hidden=true;state.result=null;state.settings=null;state.sheetIndex=0;}
   function fmt(n){return Number.isInteger(n)?String(n):Number(n.toFixed(3)).toString();}
   function num(n){return Number((Math.abs(n)<1e-10?0:n).toFixed(8)).toString();}
 
-  els.rectModeBtn.onclick=()=>switchMode('rect'); els.dxfModeBtn.onclick=()=>switchMode('dxf'); els.addPartBtn.onclick=()=>addPartRow(); els.clearPartsBtn.onclick=clearParts; els.exampleBtn.onclick=loadExample; els.nestBtn.onclick=()=>runNest('rect'); els.nestDxfBtn.onclick=()=>runNest('dxf');
+  els.rectModeBtn.onclick=()=>switchMode('rect'); els.dxfModeBtn.onclick=()=>switchMode('dxf'); els.addPartBtn.onclick=()=>addPartRow(); els.clearPartsBtn.onclick=clearParts; els.exampleBtn.onclick=loadExample; els.nestBtn.onclick=()=>runNest('rect'); els.nestDxfBtn.onclick=()=>runNest('dxf'); els.cancelDxfBtn.onclick=cancelDxfNest;
   els.dxfFiles.onchange=e=>importDxfFiles(e.target.files); els.clearDxfBtn.onclick=()=>{state.imported=[];renderDxfList();hideResults();clearError();};
   els.prevSheetBtn.onclick=()=>{state.sheetIndex--;renderResults();}; els.nextSheetBtn.onclick=()=>{state.sheetIndex++;renderResults();}; els.exportSheetBtn.onclick=exportCurrentSheet; els.exportAllBtn.onclick=exportAllSheets;
 
