@@ -1,3 +1,18 @@
+# Sheet Nester v3.4.1 — export validator hotfix
+
+This is v3.4 with one targeted fix.
+
+The full R2000 DXF document added in the recent CAD-compatibility work uses the
+standard fixed-width DXF group-code formatting (for example `  0`, `  2`, `100`).
+The browser's safety validator was still expecting unpadded codes such as `0`
+and `2`, so it incorrectly reported **"DXF validation failed: file envelope is
+incomplete"** before download.
+
+v3.4.1 makes the validator parse DXF group codes correctly regardless of their
+legal whitespace padding and validates R2000 sections as code/value pairs.
+
+There are **no nesting/optimisation changes from v3.4**.
+
 # Sheet Nester v3.4 — mixed-part optimisation + UI cleanup
 
 This release keeps the v3.3 CAD export and clearance-safety fixes and focuses on mixed part jobs and the nesting workflow.
