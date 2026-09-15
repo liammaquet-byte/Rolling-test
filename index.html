@@ -340,10 +340,10 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
         <div class="privacy-note"><strong>Local processing:</strong> DXFs are read with the browser File API. Nothing is uploaded, stored remotely, or sent to a server.</div>
 
         <div class="dxf-options">
-          <label><span>Rotation increment</span><select id="rotationStep"><option value="90" selected>90°</option><option value="45">45°</option><option value="30">30°</option><option value="15">15°</option><option value="10">10°</option><option value="5">5°</option><option value="2">2°</option><option value="1">1°</option></select></label>
-          <label><span>Optimisation</span><select id="optimisation"><option value="fast">Fast</option><option value="balanced" selected>Balanced</option><option value="fine">Fine</option></select></label>
+          <label><span>Rotation increment</span><select id="rotationStep"><option value="90">90°</option><option value="45">45°</option><option value="30">30°</option><option value="15">15°</option><option value="10">10°</option><option value="5">5°</option><option value="2">2°</option><option value="1" selected>1°</option></select></label>
+          <label><span>Optimisation</span><select id="optimisation"><option value="fast">Fast</option><option value="balanced">Balanced</option><option value="fine" selected>Fine</option></select></label>
           <label><span>Curve collision tolerance</span><input id="curveTolerance" type="number" min="0.000001" step="any" value="0.1" /></label>
-          <p class="field-help">Packing runs in a background worker so the page stays responsive. Sheet count is the first priority. Fine mode now discovers efficient complementary A+B pairs before the final nest, packs repeated copies of the best pair as compound units, then expands them back into separate original parts and performs true-profile compaction. Pair discovery deliberately allows overlapping bounding boxes while enforcing the requested gap on the actual sampled profiles. Exported CAD geometry remains separate and unchanged.</p>
+          
         </div>
 
         <div id="dxfEmpty" class="empty-state">Import one or more ASCII DXF files. Closed profiles may be a closed polyline/circle or a connected chain of LINE, ARC, and open polyline entities.</div>
