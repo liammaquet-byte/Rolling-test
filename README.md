@@ -1,10 +1,8 @@
-# Sheet Nester v2.5
+# Sheet Nester v3.0.1
 
-Client-only GitHub Pages DXF/rectangle nester.
+Hotfix for v3.0 DWG/DXF import.
 
-Changes from v2.4:
-- DXF rotation increment now defaults to 1°.
-- Optimisation now defaults to Fine.
-- Removed the long technical optimiser explanation from the main interface.
-- Fast and Balanced remain available for quicker/lower-workload runs.
-- Compound-pair nesting, true-profile collision/compaction, 1200 × 600 default sheet, and conservative R12 DXF export are unchanged.
+- Restores the `readTolerance()` helper that was accidentally dropped while the combined DXF/DWG importer was added.
+- Resets the status indicator correctly after an import error.
+- DWG adapter and the v2.9 lattice nesting engine are otherwise unchanged.
+- Default sheet 1200 x 600 mm, edge margin 0 mm, gap/kerf 0.2 mm, 1 degree rotation, Fine optimisation.

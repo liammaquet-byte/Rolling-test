@@ -296,8 +296,8 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
         <label><span>Sheet width</span><input id="sheetWidth" type="number" min="0.001" step="any" value="1200" /></label>
         <label><span>Sheet height</span><input id="sheetHeight" type="number" min="0.001" step="any" value="600" /></label>
         <label><span>Units</span><select id="units"><option value="mm" selected>mm</option><option value="in">inches</option></select></label>
-        <label><span>Edge margin</span><input id="margin" type="number" min="0" step="any" value="10" /></label>
-        <label><span>Part gap / kerf</span><input id="gap" type="number" min="0" step="any" value="3" /></label>
+        <label><span>Edge margin</span><input id="margin" type="number" min="0" step="any" value="0" /></label>
+        <label><span>Part gap / kerf</span><input id="gap" type="number" min="0" step="any" value="0.2" /></label>
         <label class="check-label"><input id="allowRotate" type="checkbox" checked /><span>Allow rotation</span></label>
       </div>
     </section>
@@ -305,7 +305,7 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
     <section class="panel">
       <div class="mode-tabs" role="tablist" aria-label="Part input type">
         <button type="button" class="mode-tab active" id="rectModeBtn">Rectangles</button>
-        <button type="button" class="mode-tab" id="dxfModeBtn">DXF shapes</button>
+        <button type="button" class="mode-tab" id="dxfModeBtn">DXF / DWG</button>
       </div>
 
       <div id="rectMode">
@@ -325,19 +325,19 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
       <div id="dxfMode" hidden>
         <div class="section-heading parts-heading">
           <div>
-            <h2>DXF shapes</h2>
-            <p>Each DXF file is treated as one part. The largest closed profile is used for collision/nesting; all supported geometry in that file is preserved on export.</p>
+            <h2>DXF / DWG</h2>
+            <p>Each DXF or DWG file is treated as one part. The largest closed profile is used for collision/nesting; supported geometry is preserved for DXF export.</p>
           </div>
           <div class="heading-actions"><button type="button" class="button ghost" id="clearDxfBtn">Clear</button></div>
         </div>
 
         <div class="dxf-upload-box">
-          <label for="dxfFiles" class="dxf-upload-label">Choose DXF files</label>
-          <input id="dxfFiles" class="dxf-file-input" type="file" accept=".dxf,text/plain,application/dxf" multiple />
-          <p>Select one or more ASCII DXF files from this device or Files. Each file is treated as one part shape.</p>
+          <label for="dxfFiles" class="dxf-upload-label">Choose DXF / DWG files</label>
+          <input id="dxfFiles" class="dxf-file-input" type="file" accept=".dxf,.dwg,text/plain,application/dxf,application/acad,application/x-acad,application/autocad_dwg,image/vnd.dwg" multiple />
+          <p>Select one or more ASCII DXF or binary DWG files from this device or Files. Each file is treated as one part shape.</p>
         </div>
 
-        <div class="privacy-note"><strong>Local processing:</strong> DXFs are read with the browser File API. Nothing is uploaded, stored remotely, or sent to a server.</div>
+        <div class="privacy-note"><strong>Local processing:</strong> Drawing bytes stay in this browser. DWG decoding uses a WebAssembly decoder loaded on demand; the drawing itself is never uploaded.</div>
 
         <div class="dxf-options">
           <label><span>Rotation increment</span><select id="rotationStep"><option value="90">90°</option><option value="45">45°</option><option value="30">30°</option><option value="15">15°</option><option value="10">10°</option><option value="5">5°</option><option value="2">2°</option><option value="1" selected>1°</option></select></label>
@@ -346,14 +346,14 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
           
         </div>
 
-        <div id="dxfEmpty" class="empty-state">Import one or more ASCII DXF files. Closed profiles may be a closed polyline/circle or a connected chain of LINE, ARC, and open polyline entities.</div>
+        <div id="dxfEmpty" class="empty-state">Import one or more DXF or DWG files. Closed profiles may include polylines, circles, splines, or connected LINE/ARC/SPLINE chains. Block INSERTs are expanded locally.</div>
         <div class="parts-table-wrap" id="dxfTableWrap" hidden>
           <table class="parts-table">
             <thead><tr><th>File</th><th>Detected size</th><th>Qty</th><th class="rotate-column">Rotate</th><th></th></tr></thead>
             <tbody id="dxfBody"></tbody>
           </table>
         </div>
-        <div class="action-row"><button type="button" class="button primary" id="nestDxfBtn">Nest DXF shapes</button><button type="button" class="button ghost" id="cancelDxfBtn" hidden>Cancel</button><span id="dxfProgress" class="field-help" aria-live="polite"></span></div>
+        <div class="action-row"><button type="button" class="button primary" id="nestDxfBtn">Nest CAD shapes</button><button type="button" class="button ghost" id="cancelDxfBtn" hidden>Cancel</button><span id="dxfProgress" class="field-help" aria-live="polite"></span></div>
       </div>
       <div id="errorBox" class="error-box" hidden></div>
     </section>
@@ -366,10 +366,10 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
       <div class="stats" id="stats"></div>
       <div class="sheet-nav"><button type="button" class="icon-button" id="prevSheetBtn" aria-label="Previous sheet">←</button><strong id="sheetIndicator">Sheet 1 of 1</strong><button type="button" class="icon-button" id="nextSheetBtn" aria-label="Next sheet">→</button></div>
       <div class="preview-wrap"><svg id="preview" viewBox="0 0 100 50" role="img" aria-label="Nested sheet preview"></svg></div>
-      <p class="preview-note">The sheet boundary is shown for context only. DXF exports contain part geometry only and are written as conservative AutoCAD R12 ASCII DXF.</p>
+      <p class="preview-note">The sheet boundary is shown for context only. DXF exports contain part geometry only. Jobs without splines use R12; spline geometry is preserved exactly using R2000 SPLINE entities.</p>
     </section>
 
-    <footer>Runs entirely in your browser. No files, dimensions, or layouts are uploaded.</footer>
+    <footer>Runs entirely in your browser. No drawing files, dimensions, or layouts are uploaded.</footer>
   </main>
 
   <template id="partRowTemplate">
@@ -454,7 +454,7 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   }
   function clearParts() { els.partsBody.innerHTML = ''; addPartRow(); hideResults(); }
   function loadExample() {
-    els.sheetWidth.value = 2440; els.sheetHeight.value = 1220; els.margin.value = 10; els.gap.value = 3; els.units.value = 'mm'; els.allowRotate.checked = true; els.partsBody.innerHTML = '';
+    els.sheetWidth.value = 2440; els.sheetHeight.value = 1220; els.margin.value = 0; els.gap.value = 0.2; els.units.value = 'mm'; els.allowRotate.checked = true; els.partsBody.innerHTML = '';
     [{ width: 720, height: 420, qty: 4 }, { width: 610, height: 380, qty: 5 }, { width: 500, height: 300, qty: 4 }, { width: 350, height: 260, qty: 6 }].forEach(addPartRow); hideResults();
   }
   function readRectSettings() {
@@ -498,62 +498,59 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   function sheetCompactness(sh){ if(!sh.placements.length)return 0; let maxX=0,maxY=0; for(const p of sh.placements){ if(p.kind==='rect'){maxX=Math.max(maxX,p.x+p.w);maxY=Math.max(maxY,p.y+p.h);}else{maxX=Math.max(maxX,p.x+p.orientation.w);maxY=Math.max(maxY,p.y+p.orientation.h);} } return maxX*maxY; }
 
   // ---------- DXF parsing and exact-geometry preservation ----------
-  const ignoredDxfEntities = new Set(['TEXT','MTEXT','DIMENSION','HATCH','POINT','LEADER','MLEADER']);
-  const rejectedDxfEntities = new Set(['SPLINE','ELLIPSE','INSERT','SOLID','3DFACE','TRACE','REGION','BODY','3DSOLID','IMAGE','WIPEOUT']);
+  const ignoredDxfEntities = new Set(['TEXT','MTEXT','DIMENSION','HATCH','POINT','LEADER','MLEADER','ATTRIB','ATTDEF']);
+  const rejectedDxfEntities = new Set(['ELLIPSE','SOLID','3DFACE','TRACE','REGION','BODY','3DSOLID','IMAGE','WIPEOUT']);
 
   function parseDxf(text, name, tolerance) {
     const raw=text.replace(/\r/g,'').split('\n'), pairs=[]; for(let i=0;i+1<raw.length;i+=2)pairs.push({code:+raw[i].trim(),value:raw[i+1].trim()});
-    let inEntities=false; const entities=[], unsupported=new Set();
-    for(let i=0;i<pairs.length;){
-      const p=pairs[i];
-      if(p.code===0&&p.value==='SECTION'&&pairs[i+1]?.code===2&&pairs[i+1]?.value==='ENTITIES'){inEntities=true;i+=2;continue;}
-      if(inEntities&&p.code===0&&p.value==='ENDSEC'){inEntities=false;i++;continue;}
-      if(!inEntities||p.code!==0){i++;continue;}
-      const type=p.value; if(type==='POLYLINE'){
-        const header=[]; i++; while(i<pairs.length&&pairs[i].code!==0)header.push(pairs[i++]); const verts=[];
-        while(i<pairs.length&&pairs[i].code===0&&pairs[i].value==='VERTEX'){const vp=[];i++;while(i<pairs.length&&pairs[i].code!==0)vp.push(pairs[i++]);verts.push(vp);}
-        if(i<pairs.length&&pairs[i].code===0&&pairs[i].value==='SEQEND')i++;
-        entities.push(parsePolylineEntity(header,verts)); continue;
-      }
-      const data=[]; i++; while(i<pairs.length&&pairs[i].code!==0)data.push(pairs[i++]);
-      if(['LWPOLYLINE','LINE','ARC','CIRCLE'].includes(type)) entities.push(parseEntity(type,data)); else if(rejectedDxfEntities.has(type))unsupported.add(type); else if(!ignoredDxfEntities.has(type)&&type!=='SEQEND') unsupported.add(type);
-    }
+    const unsupported=new Set(), blocks=parseBlocks(pairs), entityPairs=sectionContent(pairs,'ENTITIES');
+    if(!entityPairs.length)throw new Error(`${name}: no ENTITIES section found.`);
+    const entities=parseEntitySequence(entityPairs,blocks,unsupported,identityTx(),0);
     if(unsupported.size) throw new Error(`${name}: unsupported design entit${unsupported.size===1?'y':'ies'} ${[...unsupported].join(', ')}. File rejected so geometry is not silently altered.`);
+    return finalizeCadGeometry(name,entities,tolerance,'DXF');
+  }
+  function finalizeCadGeometry(name,entities,tolerance,sourceFormat='DXF',extra={}){
     const clean=entities.filter(Boolean); if(!clean.length)throw new Error(`${name}: no supported geometry found.`);
-    // Many CAD programs export one visually closed profile as separate LINE/ARC
-    // entities. Preserve those original entities for output, but stitch their
-    // endpoints into a temporary contour for nesting/collision detection.
     const closed=clean.map((e,index)=>({e,index,poly:sampleClosedEntity(e,tolerance),source:'closed entity'})).filter(x=>x.poly&&x.poly.length>=3);
-    const allBounds=geometryBounds(clean,tolerance);
-    const scale=Math.max(allBounds?.w||0,allBounds?.h||0,1);
+    const allBounds=geometryBounds(clean,tolerance), scale=Math.max(allBounds?.w||0,allBounds?.h||0,1);
     const joinTolerance=Math.max(1e-7*scale, Math.min(tolerance*0.1, scale*1e-4));
-    for(const loop of stitchEntityLoops(clean,tolerance,joinTolerance)) closed.push({e:null,index:-1,poly:loop,source:'connected LINE/ARC chain'});
-    if(!closed.length)throw new Error(`${name}: no closed nesting boundary was found. The importer accepts a closed LWPOLYLINE/POLYLINE/CIRCLE or a connected end-to-end chain of LINE, ARC, and open polyline entities.`);
+    for(const loop of stitchEntityLoops(clean,tolerance,joinTolerance)) closed.push({e:null,index:-1,poly:loop,source:'connected LINE/ARC/SPLINE chain'});
+    if(!closed.length)throw new Error(`${name}: no closed nesting boundary was found. The importer accepts closed polylines/circles/splines or connected end-to-end chains of LINE, ARC, SPLINE, and open polyline entities.`);
     for(const c of closed)c.area=Math.abs(polygonArea(c.poly)); closed.sort((a,b)=>b.area-a.area); const outer=closed[0], bb=bounds(outer.poly);
     if(!(bb.w>EPS&&bb.h>EPS))throw new Error(`${name}: the detected outer profile has zero width or height.`);
-    return {name,entities:clean,outerIndex:outer.index,outerPoints:outer.poly,baseMinX:bb.minX,baseMinY:bb.minY,width:bb.w,height:bb.h,area:outer.area,entityCount:clean.length,boundarySource:outer.source};
+    return {name,sourceFormat,...extra,entities:clean,outerIndex:outer.index,outerPoints:outer.poly,baseMinX:bb.minX,baseMinY:bb.minY,width:bb.w,height:bb.h,area:outer.area,entityCount:clean.length,boundarySource:outer.source,hasSpline:clean.some(e=>e.type==='SPLINE')};
   }
-  function val(data,code,def=0){const p=data.find(x=>x.code===code);return p?+p.value:def;}
+  function sectionContent(pairs,name){for(let i=0;i<pairs.length-1;i++)if(pairs[i].code===0&&pairs[i].value==='SECTION'&&pairs[i+1].code===2&&pairs[i+1].value===name){const out=[];for(i+=2;i<pairs.length;i++){if(pairs[i].code===0&&pairs[i].value==='ENDSEC')break;out.push(pairs[i]);}return out;}return[];}
+  function parseBlocks(pairs){const seq=sectionContent(pairs,'BLOCKS'),blocks=new Map();for(let i=0;i<seq.length;){if(!(seq[i].code===0&&seq[i].value==='BLOCK')){i++;continue;}const header=[];i++;while(i<seq.length&&seq[i].code!==0)header.push(seq[i++]);const body=[];while(i<seq.length&&!(seq[i].code===0&&seq[i].value==='ENDBLK'))body.push(seq[i++]);if(i<seq.length)i++;const name=String(val(header,2,'')).trim();if(name)blocks.set(name,{name,baseX:val(header,10,0),baseY:val(header,20,0),pairs:body});}return blocks;}
+  function identityTx(){return{a:1,b:0,c:0,d:1,tx:0,ty:0};}
+  function composeTx(A,B){return{a:A.a*B.a+A.c*B.b,b:A.b*B.a+A.d*B.b,c:A.a*B.c+A.c*B.d,d:A.b*B.c+A.d*B.d,tx:A.a*B.tx+A.c*B.ty+A.tx,ty:A.b*B.tx+A.d*B.ty+A.ty};}
+  function applyTx(t,x,y){return{x:t.a*x+t.c*y+t.tx,y:t.b*x+t.d*y+t.ty};}
+  function txSimilarity(t){const sx=Math.hypot(t.a,t.b),sy=Math.hypot(t.c,t.d),dot=t.a*t.c+t.b*t.d,det=t.a*t.d-t.b*t.c;return{ok:sx>EPS&&Math.abs(sx-sy)<=1e-7*Math.max(sx,sy,1)&&Math.abs(dot)<=1e-7*Math.max(sx*sy,1)&&det>0,scale:(sx+sy)/2,rot:Math.atan2(t.b,t.a)*180/Math.PI};}
+  function parseEntitySequence(seq,blocks,unsupported,parentTx,depth){if(depth>12)throw new Error('DXF block nesting is too deep.');const out=[];for(let i=0;i<seq.length;){if(seq[i].code!==0){i++;continue;}const type=seq[i].value;if(type==='POLYLINE'){const header=[];i++;while(i<seq.length&&seq[i].code!==0)header.push(seq[i++]);const verts=[];while(i<seq.length&&seq[i].code===0&&seq[i].value==='VERTEX'){const vp=[];i++;while(i<seq.length&&seq[i].code!==0)vp.push(seq[i++]);verts.push(vp);}if(i<seq.length&&seq[i].code===0&&seq[i].value==='SEQEND')i++;const e=parsePolylineEntity(header,verts);out.push(transformEntity(e,parentTx,unsupported));continue;}const data=[];i++;while(i<seq.length&&seq[i].code!==0)data.push(seq[i++]);if(type==='INSERT'){const blockName=String(val(data,2,'')).trim(),block=blocks.get(blockName);if(!block){unsupported.add(`INSERT(${blockName||'unnamed'})`);continue;}const sx=val(data,41,1),sy=val(data,42,1),rot=val(data,50,0),cols=Math.max(1,Math.round(val(data,70,1))),rows=Math.max(1,Math.round(val(data,71,1))),colGap=val(data,44,0),rowGap=val(data,45,0),ang=rot*Math.PI/180,c=Math.cos(ang),s=Math.sin(ang);if(Math.abs(Math.abs(sx)-Math.abs(sy))>1e-9){unsupported.add('non-uniform INSERT scale');continue;}for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){const ox=col*colGap,oy=row*rowGap,local={a:c*sx,b:s*sx,c:-s*sy,d:c*sy,tx:val(data,10,0)+(c*sx)*ox+(-s*sy)*oy-(c*sx)*block.baseX-(-s*sy)*block.baseY,ty:val(data,20,0)+(s*sx)*ox+(c*sy)*oy-(s*sx)*block.baseX-(c*sy)*block.baseY};out.push(...parseEntitySequence(block.pairs,blocks,unsupported,composeTx(parentTx,local),depth+1));}continue;}if(['LWPOLYLINE','LINE','ARC','CIRCLE','SPLINE'].includes(type)){const e=parseEntity(type,data);if(e)out.push(transformEntity(e,parentTx,unsupported));}else if(rejectedDxfEntities.has(type))unsupported.add(type);else if(!ignoredDxfEntities.has(type)&&type!=='SEQEND'&&type!=='ENDBLK')unsupported.add(type);}return out.filter(Boolean);}
+  function val(data,code,def=0){const p=data.find(x=>x.code===code);return p?(typeof def==='string'?p.value:+p.value):def;}
+  function vals(data,code){return data.filter(x=>x.code===code).map(x=>+x.value);}
   function parseEntity(type,data){
     if(type==='LINE')return{type,x1:val(data,10),y1:val(data,20),x2:val(data,11),y2:val(data,21)};
     if(type==='CIRCLE')return{type,cx:val(data,10),cy:val(data,20),r:Math.abs(val(data,40))};
     if(type==='ARC')return{type,cx:val(data,10),cy:val(data,20),r:Math.abs(val(data,40)),a0:val(data,50),a1:val(data,51)};
-    if(type==='LWPOLYLINE'){
-      const vertices=[]; let current=null; for(const p of data){ if(p.code===10){if(current)vertices.push(current);current={x:+p.value,y:0,bulge:0};} else if(current&&p.code===20)current.y=+p.value; else if(current&&p.code===42)current.bulge=+p.value; } if(current)vertices.push(current);
-      return{type,vertices,closed:(val(data,70,0)&1)!==0};
-    }
+    if(type==='LWPOLYLINE'){const vertices=[];let current=null;for(const p of data){if(p.code===10){if(current)vertices.push(current);current={x:+p.value,y:0,bulge:0};}else if(current&&p.code===20)current.y=+p.value;else if(current&&p.code===42)current.bulge=+p.value;}if(current)vertices.push(current);return{type,vertices,closed:(val(data,70,0)&1)!==0};}
+    if(type==='SPLINE'){const degree=Math.round(val(data,71,3)),flags=Math.round(val(data,70,0)),knots=vals(data,40),weights=vals(data,41),controls=[],fits=[];let cp=null,fp=null;for(const p of data){if(p.code===10){if(cp)controls.push(cp);cp={x:+p.value,y:0,z:0};}else if(cp&&p.code===20)cp.y=+p.value;else if(cp&&p.code===30)cp.z=+p.value;else if(p.code===11){if(fp)fits.push(fp);fp={x:+p.value,y:0,z:0};}else if(fp&&p.code===21)fp.y=+p.value;else if(fp&&p.code===31)fp.z=+p.value;}if(cp)controls.push(cp);if(fp)fits.push(fp);if(controls.length<degree+1||knots.length<controls.length+degree+1)throw new Error('A SPLINE uses an unsupported fit-only or incomplete control-point representation.');return{type,degree,flags,knots,weights:weights.length?weights:new Array(controls.length).fill(1),controls,fits};}
     return null;
   }
-  function parsePolylineEntity(header,verts){ const vertices=verts.map(v=>({x:val(v,10),y:val(v,20),bulge:val(v,42,0)})); return{type:'POLYLINE',vertices,closed:(val(header,70,0)&1)!==0}; }
-  function sampleClosedEntity(e,tol){ if(e.type==='CIRCLE')return sampleCircle(e.cx,e.cy,e.r,tol); if((e.type==='LWPOLYLINE'||e.type==='POLYLINE')&&e.closed)return samplePolyline(e.vertices,true,tol); return null; }
+  function parsePolylineEntity(header,verts){const vertices=verts.map(v=>({x:val(v,10),y:val(v,20),bulge:val(v,42,0)}));return{type:'POLYLINE',vertices,closed:(val(header,70,0)&1)!==0};}
+  function transformEntity(e,t,unsupported){if(!e)return null;if(e.type==='LINE'){const a=applyTx(t,e.x1,e.y1),b=applyTx(t,e.x2,e.y2);return{...e,x1:a.x,y1:a.y,x2:b.x,y2:b.y};}if(e.type==='SPLINE'){return{...e,controls:e.controls.map(p=>{const q=applyTx(t,p.x,p.y);return{x:q.x,y:q.y,z:p.z||0};}),fits:e.fits.map(p=>{const q=applyTx(t,p.x,p.y);return{x:q.x,y:q.y,z:p.z||0};})};}const sim=txSimilarity(t);if(!sim.ok){unsupported.add('reflected/non-uniform block curve transform');return null;}if(e.type==='CIRCLE'){const c=applyTx(t,e.cx,e.cy);return{...e,cx:c.x,cy:c.y,r:e.r*sim.scale};}if(e.type==='ARC'){const c=applyTx(t,e.cx,e.cy);return{...e,cx:c.x,cy:c.y,r:e.r*sim.scale,a0:e.a0+sim.rot,a1:e.a1+sim.rot};}if(e.type==='LWPOLYLINE'||e.type==='POLYLINE'){return{...e,vertices:e.vertices.map(v=>{const q=applyTx(t,v.x,v.y);return{x:q.x,y:q.y,bulge:v.bulge||0};})};}return e;}
+  function sampleClosedEntity(e,tol){if(e.type==='CIRCLE')return sampleCircle(e.cx,e.cy,e.r,tol);if((e.type==='LWPOLYLINE'||e.type==='POLYLINE')&&e.closed)return samplePolyline(e.vertices,true,tol);if(e.type==='SPLINE'){const p=sampleSpline(e,tol);if((e.flags&1)||dist2(p[0],p[p.length-1])<=tol*tol)return p.slice(0,-1); }return null;}
   function geometryBounds(entities,tol){const pts=[];for(const e of entities){const p=sampleEntityPath(e,tol);if(p)pts.push(...p);}return pts.length?bounds(pts):null;}
   function sampleEntityPath(e,tol){
     if(e.type==='LINE')return[{x:e.x1,y:e.y1},{x:e.x2,y:e.y2}];
     if(e.type==='ARC')return sampleArc(e,tol);
     if(e.type==='CIRCLE')return sampleCircle(e.cx,e.cy,e.r,tol);
     if(e.type==='LWPOLYLINE'||e.type==='POLYLINE')return samplePolyline(e.vertices,e.closed,tol);
+    if(e.type==='SPLINE')return sampleSpline(e,tol);
     return null;
   }
+  function splinePoint(e,u){const p=e.degree,U=e.knots,P=e.controls,W=e.weights,n=P.length-1;let k;if(u>=U[n+1]-1e-12)k=n;else{ k=p;while(k<n+1&&!(u>=U[k]&&u<U[k+1]))k++;if(k>n)k=n;}const d=[];for(let j=0;j<=p;j++){const i=k-p+j,w=W[i]??1;d[j]={x:P[i].x*w,y:P[i].y*w,w};}for(let r=1;r<=p;r++)for(let j=p;j>=r;j--){const i=k-p+j,den=U[i+p-r+1]-U[i],a=Math.abs(den)<1e-14?0:(u-U[i])/den;d[j]={x:(1-a)*d[j-1].x+a*d[j].x,y:(1-a)*d[j-1].y+a*d[j].y,w:(1-a)*d[j-1].w+a*d[j].w};}const q=d[p];return{x:q.x/q.w,y:q.y/q.w};}
+  function sampleSpline(e,tol){const U=e.knots,p=e.degree,n=e.controls.length-1,out=[];const push=pnt=>{if(!out.length||dist2(out[out.length-1],pnt)>1e-18)out.push(pnt);};const refine=(u0,a,u1,b,depth)=>{const um=(u0+u1)/2,m=splinePoint(e,um),err=pointSegDist2(m,a,b);if(depth<14&&err>tol*tol){refine(u0,a,um,m,depth+1);refine(um,m,u1,b,depth+1);}else push(b);};for(let i=p;i<=n;i++){const u0=U[i],u1=U[i+1];if(!(u1>u0+1e-14))continue;const a=splinePoint(e,u0),b=splinePoint(e,u1);push(a);refine(u0,a,u1,b,0);}return out;}
   function sampleArc(e,tol){let a0=e.a0*Math.PI/180,a1=e.a1*Math.PI/180,sweep=a1-a0;while(sweep<=0)sweep+=Math.PI*2;const n=curveSegments(e.r,sweep,tol,2),pts=[];for(let i=0;i<=n;i++){const a=a0+sweep*i/n;pts.push({x:e.cx+e.r*Math.cos(a),y:e.cy+e.r*Math.sin(a)});}return pts;}
   function stitchEntityLoops(entities,tol,joinTol){
     const edges=[];
@@ -576,10 +573,30 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   function samplePolyline(vs,closed,tol){ const out=[]; const count=closed?vs.length:vs.length-1; for(let i=0;i<count;i++){const a=vs[i],b=vs[(i+1)%vs.length]; if(!out.length)out.push({x:a.x,y:a.y}); if(Math.abs(a.bulge||0)<1e-12)out.push({x:b.x,y:b.y}); else out.push(...sampleBulge(a,b,a.bulge,tol).slice(1));} if(!closed&&vs.length)out.push({x:vs.at(-1).x,y:vs.at(-1).y}); if(closed&&out.length>1&&dist2(out[0],out.at(-1))<EPS*EPS)out.pop(); return out; }
   function sampleBulge(a,b,bulge,tol){ const dx=b.x-a.x,dy=b.y-a.y,c=Math.hypot(dx,dy),theta=4*Math.atan(bulge); if(c<EPS)return[{x:a.x,y:a.y},{x:b.x,y:b.y}]; const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,off=c*(1-bulge*bulge)/(4*bulge),ux=-dy/c,uy=dx/c,cx=mx+ux*off,cy=my+uy*off,r=Math.hypot(a.x-cx,a.y-cy),start=Math.atan2(a.y-cy,a.x-cx),n=curveSegments(r,theta,tol,2),pts=[]; for(let i=0;i<=n;i++){const ang=start+theta*i/n;pts.push({x:cx+r*Math.cos(ang),y:cy+r*Math.sin(ang)});} pts[0]={x:a.x,y:a.y};pts[n]={x:b.x,y:b.y};return pts; }
 
-  async function importDxfFiles(fileList){ clearError(); const tolerance=readTolerance(); for(const file of [...fileList]){ try{const text=await file.text(); const parsed=parseDxf(text,file.name,tolerance); state.imported.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),file:parsed,qty:1,rotate:true});}catch(e){showError(e.message||String(e));} } els.dxfFiles.value=''; renderDxfList(); }
   function readTolerance(){const t=+els.curveTolerance.value;if(!(t>0))throw new Error('Curve collision tolerance must be greater than zero.');return t;}
-  function renderDxfList(){ els.dxfEmpty.hidden=state.imported.length>0; els.dxfTableWrap.hidden=!state.imported.length; els.dxfBody.innerHTML=''; for(const item of state.imported){const tr=document.createElement('tr');tr.innerHTML=`<td><div class="dxf-name"></div></td><td>${fmt(item.file.width)} × ${fmt(item.file.height)}</td><td><input class="dxf-qty" type="number" min="1" step="1" value="${item.qty}"></td><td class="rotate-column"><input class="dxf-rotate" type="checkbox" ${item.rotate?'checked':''}></td><td><button type="button" class="remove-part" aria-label="Remove DXF">×</button></td>`; const name=tr.querySelector('.dxf-name'); name.textContent=item.file.name; const sub=document.createElement('span');sub.className='dxf-sub';sub.textContent=`${item.file.entityCount} preserved geometr${item.file.entityCount===1?'y':'ies'}`;name.appendChild(sub);tr.querySelector('.dxf-qty').onchange=e=>item.qty=Math.max(1,parseInt(e.target.value,10)||1);tr.querySelector('.dxf-rotate').onchange=e=>item.rotate=e.target.checked;tr.querySelector('.remove-part').onclick=()=>{state.imported=state.imported.filter(x=>x.id!==item.id);renderDxfList();hideResults();};els.dxfBody.appendChild(tr);} }
-  function readDxfSettings(){const s=commonSettings(),tolerance=readTolerance(),rotationStep=+els.rotationStep.value;if(!state.imported.length)throw new Error('Import at least one DXF part first.'); for(const item of state.imported){if(!Number.isInteger(item.qty)||item.qty<1)throw new Error(`${item.file.name}: quantity must be 1 or more.`);} return{...s,mode:'dxf',tolerance,rotationStep,optimisation:els.optimisation.value,parts:state.imported};}
+
+  async function importDxfFiles(fileList){
+    clearError(); const tolerance=readTolerance();
+    for(const file of [...fileList]){
+      try{
+        const ext=(file.name.split('.').pop()||'').toLowerCase(); let parsed;
+        if(ext==='dwg'){
+          els.statusPill.textContent='Loading DWG decoder…';
+          const {parseDwgFile}=await import('./dwg-adapter.js');
+          els.statusPill.textContent='Reading DWG…';
+          const decoded=await parseDwgFile(await file.arrayBuffer(),file.name);
+          parsed=finalizeCadGeometry(file.name,decoded.entities,tolerance,'DWG',{decoder:decoded.decoder});
+        }else if(ext==='dxf'){
+          parsed=parseDxf(await file.text(),file.name,tolerance);
+        }else throw new Error(`${file.name}: choose a .dxf or .dwg file.`);
+        state.imported.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),file:parsed,qty:1,rotate:true});
+        els.statusPill.textContent='Ready';
+      }catch(e){els.statusPill.textContent='Ready';showError(e.message||String(e));}
+    }
+    els.dxfFiles.value=''; renderDxfList();
+  }
+  function renderDxfList(){ els.dxfEmpty.hidden=state.imported.length>0; els.dxfTableWrap.hidden=!state.imported.length; els.dxfBody.innerHTML=''; for(const item of state.imported){const tr=document.createElement('tr');tr.innerHTML=`<td><div class="dxf-name"></div></td><td>${fmt(item.file.width)} × ${fmt(item.file.height)}</td><td><input class="dxf-qty" type="number" min="1" step="1" value="${item.qty}"></td><td class="rotate-column"><input class="dxf-rotate" type="checkbox" ${item.rotate?'checked':''}></td><td><button type="button" class="remove-part" aria-label="Remove CAD part">×</button></td>`; const name=tr.querySelector('.dxf-name'); name.textContent=item.file.name; const sub=document.createElement('span');sub.className='dxf-sub';sub.textContent=`${item.file.sourceFormat||'DXF'} · ${item.file.entityCount} preserved geometr${item.file.entityCount===1?'y':'ies'}${item.file.decoder?' · local WASM':''}`;name.appendChild(sub);tr.querySelector('.dxf-qty').onchange=e=>item.qty=Math.max(1,parseInt(e.target.value,10)||1);tr.querySelector('.dxf-rotate').onchange=e=>item.rotate=e.target.checked;tr.querySelector('.remove-part').onclick=()=>{state.imported=state.imported.filter(x=>x.id!==item.id);renderDxfList();hideResults();};els.dxfBody.appendChild(tr);} }
+  function readDxfSettings(){const s=commonSettings(),tolerance=readTolerance(),rotationStep=+els.rotationStep.value;if(!state.imported.length)throw new Error('Import at least one DXF or DWG part first.'); for(const item of state.imported){if(!Number.isInteger(item.qty)||item.qty<1)throw new Error(`${item.file.name}: quantity must be 1 or more.`);} return{...s,mode:'dxf',tolerance,rotationStep,optimisation:els.optimisation.value,parts:state.imported};}
 
   function buildOrientations(file,canRotate,step){ const src=file.outerPoints.map(p=>({x:p.x-file.baseMinX,y:p.y-file.baseMinY})), angles=canRotate?Array.from({length:Math.ceil(360/step)},(_,i)=>(i*step)%360):[0], seen=new Set(), out=[]; for(const angle of angles){const key=((angle%360)+360)%360;if(seen.has(key))continue;seen.add(key);const rp=src.map(p=>rotatePoint(p,key)),bb=bounds(rp),points=rp.map(p=>({x:p.x-bb.minX,y:p.y-bb.minY}));out.push({angle:key,points,w:bb.w,h:bb.h,rotMinX:bb.minX,rotMinY:bb.minY});} return out; }
   function rotatePoint(p,deg){const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return{x:p.x*c-p.y*s,y:p.x*s+p.y*c};}
@@ -613,7 +630,7 @@ if(best<start-0.04){if(axis==='x')p.x=best;else p.y=best;p.polygon=polyAt(p,p.x,
 function compactProfiles(sheets,s,passes){for(const sh of sheets){for(let pass=0;pass<passes;pass++){let moved=false;const order=[...sh.placements].sort((a,b)=>a.y-b.y||a.x-b.x);for(const p of order){moved=slideAxis(p,sh.placements,s,'y')||moved;moved=slideAxis(p,sh.placements,s,'x')||moved;}if(!moved)break;}}return sheets;}
 function mateScore(sh,s,p,x,y){let mx=s.margin,my=s.margin;for(const q of sh.placements){const qx=q===p?x:q.x,qy=q===p?y:q.y;mx=Math.max(mx,qx+q.orientation.w);my=Math.max(my,qy+q.orientation.h);}return[(mx-s.margin)*(my-s.margin),my,mx,y,x];}
 function tupleLess(a,b){for(let i=0;i<a.length;i++)if(Math.abs(a[i]-b[i])>0.05)return a[i]<b[i];return false;}
-function pairMateProfiles(sheets,s){for(const sh of sheets){const ps=sh.placements;const movers=[...ps].sort((a,b)=>(b.y+b.orientation.h)-(a.y+a.orientation.h)||(b.x+b.orientation.w)-(a.x+a.orientation.w));for(const p of movers){const anchors=ps.filter(q=>q!==p&&q.typeIndex!==p.typeIndex).sort((a,b)=>(Math.abs(a.x-p.x)+Math.abs(a.y-p.y))-(Math.abs(b.x-p.x)+Math.abs(b.y-p.y))).slice(0,4);let best={x:p.x,y:p.y,poly:p.polygon,score:mateScore(sh,s,p,p.x,p.y)};for(const q of anchors){const minDim=Math.max(1,Math.min(p.orientation.w,p.orientation.h,q.orientation.w,q.orientation.h)),step=Math.max(s.gap||1,Math.min(18,minDim/4));const x0=Math.max(s.margin,q.x-p.orientation.w-s.gap),x1=Math.min(s.sheetW-s.margin-p.orientation.w,q.x+q.orientation.w+s.gap),y0=Math.max(s.margin,q.y-p.orientation.h-s.gap),y1=Math.min(s.sheetH-s.margin-p.orientation.h,q.y+q.orientation.h+s.gap);const xs=[],ys=[];for(let x=x0;x<=x1+EPS;x+=step)xs.push(x);for(let y=y0;y<=y1+EPS;y+=step)ys.push(y);xs.push(q.x-p.orientation.w-s.gap,q.x+q.orientation.w+s.gap,q.x);ys.push(q.y-p.orientation.h-s.gap,q.y+q.orientation.h+s.gap,q.y);for(const y of ys)for(const x of xs){const poly=validAt(p,x,y,ps,s);if(!poly)continue;const score=mateScore(sh,s,p,x,y);if(tupleLess(score,best.score))best={x,y,poly,score};}}
+function pairMateProfiles(sheets,s){for(const sh of sheets){const ps=sh.placements;const movers=[...ps].sort((a,b)=>(b.y+b.orientation.h)-(a.y+a.orientation.h)||(b.x+b.orientation.w)-(a.x+a.orientation.w));for(const p of movers){const anchors=ps.filter(q=>q!==p).sort((a,b)=>(Math.abs(a.x-p.x)+Math.abs(a.y-p.y))-(Math.abs(b.x-p.x)+Math.abs(b.y-p.y))).slice(0,4);let best={x:p.x,y:p.y,poly:p.polygon,score:mateScore(sh,s,p,p.x,p.y)};for(const q of anchors){const minDim=Math.max(1,Math.min(p.orientation.w,p.orientation.h,q.orientation.w,q.orientation.h)),step=Math.max(s.gap||1,Math.min(18,minDim/4));const x0=Math.max(s.margin,q.x-p.orientation.w-s.gap),x1=Math.min(s.sheetW-s.margin-p.orientation.w,q.x+q.orientation.w+s.gap),y0=Math.max(s.margin,q.y-p.orientation.h-s.gap),y1=Math.min(s.sheetH-s.margin-p.orientation.h,q.y+q.orientation.h+s.gap);const xs=[],ys=[];for(let x=x0;x<=x1+EPS;x+=step)xs.push(x);for(let y=y0;y<=y1+EPS;y+=step)ys.push(y);xs.push(q.x-p.orientation.w-s.gap,q.x+q.orientation.w+s.gap,q.x);ys.push(q.y-p.orientation.h-s.gap,q.y+q.orientation.h+s.gap,q.y);for(const y of ys)for(const x of xs){const poly=validAt(p,x,y,ps,s);if(!poly)continue;const score=mateScore(sh,s,p,x,y);if(tupleLess(score,best.score))best={x,y,poly,score};}}
       if(Math.abs(best.x-p.x)>0.05||Math.abs(best.y-p.y)>0.05){p.x=best.x;p.y=best.y;p.polygon=best.poly;slideAxis(p,ps,s,'y');slideAxis(p,ps,s,'x');}}
   }return sheets;}
 function recomputeEnvelope(r,s){let envelope=0;for(const sh of r.sheets){let mx=s.margin,my=s.margin;for(const p of sh.placements){mx=Math.max(mx,p.x+p.orientation.w);my=Math.max(my,p.y+p.orientation.h);}envelope+=(mx-s.margin)*(my-s.margin);}r.envelope=envelope;return r;}
@@ -658,8 +675,8 @@ function discoverPairTemplate(typeA,typeB,osA,osB,s){
   const ax=-box.minX,ay=-box.minY,bxN=bx-box.minX,byN=by-box.minY;
   const separate=a.w*a.h+best.b.w*best.b.h;
   return{w:box.w,h:box.h,area:box.area,saving:separate-box.area,children:[
-    {typeIndex:typeA.index,angle:a.angle,x:ax,y:ay},
-    {typeIndex:typeB.index,angle:best.b.angle,x:bxN,y:byN}
+    {slot:0,typeIndex:typeA.index,angle:a.angle,x:ax,y:ay},
+    {slot:1,typeIndex:typeB.index,angle:best.b.angle,x:bxN,y:byN}
   ]};
 }
 function rotateXY(x,y,deg){const a=deg*Math.PI/180,c=Math.cos(a),sn=Math.sin(a);return{x:x*c-y*sn,y:x*sn+y*c};}
@@ -670,12 +687,12 @@ function compoundVariants(template,osByType,s,canRotate){
     for(const ch of template.children){
       const o0=closestOrientation(osByType[ch.typeIndex],ch.angle);
       const abs=o0.points.map(p=>({x:p.x+ch.x,y:p.y+ch.y})).map(p=>rotateXY(p.x,p.y,turn));
-      childRaw.push({typeIndex:ch.typeIndex,angle:ch.angle+turn,poly:abs});
+      childRaw.push({slot:ch.slot,typeIndex:ch.typeIndex,angle:ch.angle+turn,poly:abs});
     }
     const all=childRaw.flatMap(c=>c.poly),bb=bounds(all),children=[];
     for(const ch of childRaw){
       const p=ch.poly.map(q=>({x:q.x-bb.minX,y:q.y-bb.minY})),pb=bounds(p),o=closestOrientation(osByType[ch.typeIndex],ch.angle);
-      children.push({typeIndex:ch.typeIndex,orientation:o,dx:pb.minX,dy:pb.minY});
+      children.push({slot:ch.slot,typeIndex:ch.typeIndex,orientation:o,dx:pb.minX,dy:pb.minY});
     }
     out.push({w:bb.w,h:bb.h,children});
   }
@@ -713,46 +730,171 @@ function packUnits(items,types,s,heur){
   return recomputeEnvelope(result,s);
 }
 function buildCompoundCandidate(instances,types,s){
-  if(types.length<2)return null;
   const byType=types.map(()=>[]);
   for(const inst of instances)byType[inst.t].push(inst);
   const osByType=types.map((_,i)=>byType[i][0]?.os||[]);
   let bestPair=null;
-  for(let a=0;a<types.length;a++)for(let b=a+1;b<types.length;b++){
-    if(!byType[a].length||!byType[b].length)continue;
+
+  // Include A+A as well as A+B. This matters for a single repeated DXF whose
+  // own concave/convex regions can interlock at an offset or relative rotation.
+  for(let a=0;a<types.length;a++)for(let b=a;b<types.length;b++){
+    const same=a===b;
+    const count=same?Math.floor(byType[a].length/2):Math.min(byType[a].length,byType[b].length);
+    if(count<1)continue;
     const ta={...types[a],index:a},tb={...types[b],index:b};
     const tpl=discoverPairTemplate(ta,tb,osByType[a],osByType[b],s);
-    const count=Math.min(byType[a].length,byType[b].length);
     if(tpl&&tpl.saving>EPS){
       const value=tpl.saving*count;
-      if(!bestPair||value>bestPair.value)bestPair={a,b,tpl,count,value};
+      if(!bestPair||value>bestPair.value)bestPair={a,b,same,tpl,count,value};
     }
   }
   if(!bestPair)return null;
+
   const used=new Set(),items=[];
   const canRotate=types[bestPair.a].rotate&&types[bestPair.b].rotate;
   const pairVars=compoundVariants(bestPair.tpl,osByType,s,canRotate);
+
   for(let i=0;i<bestPair.count;i++){
-    const ia=byType[bestPair.a][i],ib=byType[bestPair.b][i];used.add(ia.id);used.add(ib.id);
-    // IDs are attached per pair so expansion remains unique.
-    const vars=pairVars.map(v=>({...v,children:v.children.map(ch=>({...ch,id:ch.typeIndex===bestPair.a?ia.id:ib.id}))}));
+    const ia=bestPair.same?byType[bestPair.a][2*i]:byType[bestPair.a][i];
+    const ib=bestPair.same?byType[bestPair.a][2*i+1]:byType[bestPair.b][i];
+    used.add(ia.id); used.add(ib.id);
+
+    const vars=pairVars.map(v=>({...v,children:v.children.map(ch=>({
+      ...ch,id:ch.slot===0?ia.id:ib.id
+    }))}));
     items.push({kind:'pair',variants:vars,area:ia.area+ib.area});
   }
-  for(const inst of instances)if(!used.has(inst.id))items.push({kind:'single',variants:singleVariants(inst),area:inst.area});
+
+  for(const inst of instances)if(!used.has(inst.id))
+    items.push({kind:'single',variants:singleVariants(inst),area:inst.area});
+
   const orders=[
     [...items].sort((a,b)=>b.area-a.area),
     [...items].sort((a,b)=>Math.max(...b.variants.map(v=>v.w*v.h))-Math.max(...a.variants.map(v=>v.w*v.h))),
     interleaveTypes(items.map((x,i)=>({wrap:x,t:x.kind==='pair'?0:1,bbox:x.area,area:x.area})), 'largeFirst').map(x=>x.wrap)
   ];
+
   let best=null,attempts=0;
   for(const order of orders)for(const h of ['bottom','short','area','long']){
     const r=packUnits(order,types,s,h);attempts++;if(better(r,best))best=r;
   }
-  best.compoundAttempts=attempts;best.pairSaving=bestPair.tpl.saving;return best;
+  best.compoundAttempts=attempts;
+  best.pairSaving=bestPair.tpl.saving;
+  best.pairKind=bestPair.same?'same-type':'mixed-type';
+  // Kept only inside the worker long enough for the lattice stage. It is
+  // removed before the final result is posted back to the page.
+  best._pair={...bestPair,pairVars};
+  return best;
+}
+
+function unitPolys(v,dx=0,dy=0){return v.children.map(ch=>ch.orientation.points.map(p=>({x:p.x+ch.dx+dx,y:p.y+ch.dy+dy})));}
+function unitsTooClose(v,dx,dy,gap){const A=unitPolys(v),B=unitPolys(v,dx,dy);for(const a of A)for(const b of B)if(polyTooClose(a,b,gap))return true;return false;}
+function horizontalRepeatSafe(v,hx,s){const n=Math.ceil((v.w+s.gap)/Math.max(hx,EPS))+1;for(let k=1;k<=n;k++)if(unitsTooClose(v,k*hx,0,s.gap))return false;return true;}
+function staggerRepeatSafe(v,hx,sx,vy,s){
+  // Adjacent staggered rows plus any further row that can still overlap the
+  // unit's vertical extent. Testing nearby horizontal repeats makes this a
+  // true profile check rather than a compound bounding-box check.
+  const rows=Math.ceil((v.h+s.gap)/Math.max(vy,EPS))+1;
+  const kr=Math.ceil((v.w+Math.abs(sx)+s.gap)/Math.max(hx,EPS))+2;
+  for(let r=1;r<=rows;r++){
+    const dy=r*vy;if(dy>v.h+s.gap+EPS)break;
+    const shift=(r%2)?sx:0;
+    for(let k=-kr;k<=kr;k++)if(unitsTooClose(v,shift+k*hx,dy,s.gap))return false;
+  }
+  return true;
+}
+function discoverLattice(v,s){
+  const minDim=Math.max(1,Math.min(v.w,v.h));
+  const coarse=Math.max(0.5,s.gap||0.2,Math.min(8,minDim/12));
+  let hx=null;
+  for(let x=Math.max(coarse,s.gap);x<=v.w+s.gap+EPS;x+=coarse)if(horizontalRepeatSafe(v,x,s)){hx=x;break;}
+  if(hx===null)return null;
+  // Refine horizontal pitch locally. Non-convex geometry is not monotonic, so
+  // retain the best valid pitch found rather than using a binary search.
+  for(let step=coarse/2;step>0.12;step/=2){let improved=true;while(improved&&hx-step>EPS){improved=false;const q=hx-step;if(horizontalRepeatSafe(v,q,s)){hx=q;improved=true;}}}
+
+  let best=null;
+  const yStep=Math.max(0.5,s.gap||0.2,Math.min(8,minDim/12));
+  const xStep=Math.max(0.5,Math.min(8,hx/12));
+  for(let vy=Math.max(yStep,s.gap);vy<=v.h+s.gap+EPS;vy+=yStep){
+    for(let sx=0;sx<hx-EPS;sx+=xStep){
+      if(!staggerRepeatSafe(v,hx,sx,vy,s))continue;
+      const score=[hx*vy,vy,Math.min(sx,hx-sx)];
+      if(!best||tupleLess(score,best.score))best={hx,sx,vy,score};
+    }
+    // Once a very dense row pitch is found, later rows have a worse cell area.
+    if(best&&vy>best.vy+yStep*2)break;
+  }
+  if(!best){const vy=v.h+s.gap;if(staggerRepeatSafe(v,hx,0,vy,s))best={hx,sx:0,vy,score:[hx*vy,vy,0]};}
+  if(!best)return null;
+  // Refine stagger and vertical pitch around the best coarse solution.
+  let {sx,vy}=best;
+  for(let step=yStep/2;step>0.12;step/=2){
+    let changed=false;
+    for(const dy of [-step,0,step])for(const dx of [-step,0,step]){
+      const qy=vy+dy,qx=((sx+dx)%hx+hx)%hx;if(qy<=EPS)continue;
+      if(!staggerRepeatSafe(v,hx,qx,qy,s))continue;
+      const score=[hx*qy,qy,Math.min(qx,hx-qx)];
+      if(tupleLess(score,[hx*vy,vy,Math.min(sx,hx-sx)])){sx=qx;vy=qy;changed=true;}
+    }
+    if(!changed)continue;
+  }
+  return{hx,sx,vy,cellArea:hx*vy};
+}
+function latticeSlots(v,lat,s,limit=Infinity){
+  const out=[],maxY=s.sheetH-s.margin-v.h;
+  for(let row=0;;row++){
+    const y=s.margin+row*lat.vy;if(y>maxY+EPS)break;
+    const shift=(row%2)?lat.sx:0,maxX=s.sheetW-s.margin-v.w;
+    for(let x=s.margin+shift;x<=maxX+EPS;x+=lat.hx){out.push({x,y});if(out.length>=limit)return out;}
+  }
+  return out;
+}
+function addPairAt(sh,v,pos,ids,types){
+  for(const ch of v.children){const id=ch.slot===0?ids[0]:ids[1],x=pos.x+ch.dx,y=pos.y+ch.dy,o=ch.orientation;sh.placements.push({id,typeIndex:ch.typeIndex,x,y,orientation:o,polygon:o.points.map(p=>({x:p.x+x,y:p.y+y}))});sh.partArea+=types[ch.typeIndex].area;}
+}
+function bestRemainderPlacement(inst,sheets,s){
+  let best=null;
+  for(let si=0;si<sheets.length;si++){
+    const sh=sheets[si],anchors=sh.placements;
+    for(const o of inst.os){
+      const candidates=[[s.margin,s.margin]];
+      for(const q of anchors){
+        candidates.push([q.x+q.orientation.w+s.gap,q.y],[q.x-o.w-s.gap,q.y],[q.x,q.y+q.orientation.h+s.gap],[q.x,q.y-o.h-s.gap],
+          [q.x+q.orientation.w-o.w,q.y+q.orientation.h+s.gap],[q.x+q.orientation.w+s.gap,q.y+q.orientation.h-o.h]);
+      }
+      const seen=new Set();
+      for(const [x0,y0] of candidates){const x=Math.max(s.margin,Math.min(s.sheetW-s.margin-o.w,x0)),y=Math.max(s.margin,Math.min(s.sheetH-s.margin-o.h,y0)),key=Math.round(x*20)+','+Math.round(y*20);if(seen.has(key))continue;seen.add(key);const p={orientation:o},poly=validAt(p,x,y,anchors,s);if(!poly)continue;let mx=s.margin,my=s.margin;for(const q of anchors){mx=Math.max(mx,q.x+q.orientation.w);my=Math.max(my,q.y+q.orientation.h);}mx=Math.max(mx,x+o.w);my=Math.max(my,y+o.h);const score=[si,(mx-s.margin)*(my-s.margin),my,mx,y,x];if(!best||tupleLess(score,best.score))best={si,x,y,o,poly,score};}
+    }
+  }
+  return best;
+}
+function placeRemainders(result,leftovers,types,s){
+  for(const inst of leftovers){let b=bestRemainderPlacement(inst,result.sheets,s);if(!b){const sh={sheetIndex:result.sheets.length,placements:[],partArea:0};result.sheets.push(sh);b=bestRemainderPlacement(inst,result.sheets,s);if(!b)throw new Error(types[inst.t].name+' does not fit the usable sheet area at the permitted rotations.');}
+    const sh=result.sheets[b.si];sh.placements.push({id:inst.id,typeIndex:inst.t,x:b.x,y:b.y,orientation:b.o,polygon:b.poly});sh.partArea+=types[inst.t].area;
+  }
+  return recomputeEnvelope(result,s);
+}
+function buildLatticeCandidate(instances,types,s,pairSpec){
+  if(!pairSpec)return null;
+  const byType=types.map(()=>[]);for(const inst of instances)byType[inst.t].push(inst);
+  const variants=pairSpec.pairVars||[];let best=null,attempts=0;
+  for(const v0 of variants){
+    // IDs are assigned per repeated copy, so the lattice geometry itself stays reusable.
+    const v={...v0,children:v0.children.map(ch=>({...ch,id:undefined}))};
+    const lat=discoverLattice(v,s);attempts++;if(!lat)continue;
+    const capacity=latticeSlots(v,lat,s).length;if(!capacity)continue;
+    const sheets=[],used=new Set();let pairIndex=0;
+    while(pairIndex<pairSpec.count){const sh={sheetIndex:sheets.length,placements:[],partArea:0},slots=latticeSlots(v,lat,s,Math.min(capacity,pairSpec.count-pairIndex));for(const pos of slots){const i=pairIndex++,ia=pairSpec.same?byType[pairSpec.a][2*i]:byType[pairSpec.a][i],ib=pairSpec.same?byType[pairSpec.a][2*i+1]:byType[pairSpec.b][i];used.add(ia.id);used.add(ib.id);addPairAt(sh,v,pos,[ia.id,ib.id],types);}sheets.push(sh);}
+    let r={sheets,envelope:0,lastCount:sheets.at(-1)?.placements.length||0,latticeAttempts:attempts,lattice:{hx:lat.hx,sx:lat.sx,vy:lat.vy}};
+    const leftovers=instances.filter(x=>!used.has(x.id));r=placeRemainders(r,leftovers,types,s);r.sheets=compactProfiles(r.sheets,s,2);r=recomputeEnvelope(r,s);if(better(r,best))best=r;
+  }
+  if(best){best.latticeAttempts=attempts;best.pairKind=pairSpec.same?'same-type':'mixed-type';}
+  return best;
 }
 function pack(order,types,s,heur){const W=s.sheetW-2*s.margin+s.gap,H=s.sheetH-2*s.margin+s.gap,bins=[];for(const inst of order){let best=null;for(let bi=0;bi<bins.length;bi++){for(const o of inst.os){const sc=bins[bi].score(o.w+s.gap,o.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi,bin:bins[bi],sc,o};}if(best)break;}if(!best){const bin=new Bin(W,H,heur);bins.push(bin);for(const o of inst.os){const sc=bin.score(o.w+s.gap,o.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi:bins.length-1,bin,sc,o};}}if(!best)throw new Error(types[inst.t].name+' does not fit the usable sheet area at the permitted rotations.');const r={x:best.sc.x,y:best.sc.y,w:best.o.w+s.gap,h:best.o.h+s.gap,id:inst.id,t:inst.t,o:best.o};best.bin.place(r);}
 let sheets=bins.map((b,si)=>({sheetIndex:si,placements:b.used.map(r=>({id:r.id,typeIndex:r.t,x:r.x+s.margin,y:r.y+s.margin,orientation:r.o,polygon:r.o.points.map(p=>({x:p.x+r.x+s.margin,y:p.y+r.y+s.margin}))})),partArea:b.used.reduce((z,r)=>z+types[r.t].area,0)}));sheets=compactProfiles(sheets,s,s.optimisation==='fine'?3:s.optimisation==='balanced'?2:1);let envelope=0;for(const sh of sheets){let mx=s.margin,my=s.margin;for(const p of sh.placements){mx=Math.max(mx,p.x+p.orientation.w);my=Math.max(my,p.y+p.orientation.h);}envelope+=(mx-s.margin)*(my-s.margin);}return{sheets,envelope,lastCount:sheets.at(-1)?.placements.length||0};}
-onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let t=0;t<types.length;t++){const ty=types[t],os=orientations(ty,s.rotationStep,s.globalRotate&&ty.rotate);for(let q=0;q<ty.qty;q++)instances.push({id:id++,t,os,area:ty.area,bbox:ty.width*ty.height,max:Math.max(ty.width,ty.height)});}const orders=[ [...instances].sort((a,b)=>b.bbox-a.bbox||b.area-a.area), [...instances].sort((a,b)=>b.max-a.max||b.area-a.area), [...instances].sort((a,b)=>b.area-a.area||b.max-a.max), interleaveTypes(instances,'largeFirst'), interleaveTypes(instances,'smallFirst'), interleaveTypes(instances,'serpentine'), blockMix(instances,2), blockMix(instances,3) ];const extra=s.optimisation==='fine'?12:s.optimisation==='balanced'?5:0;for(let i=0;i<extra;i++)orders.push(shuffle(instances,7919*(i+1)+instances.length));const heurs=s.optimisation==='fast'?['bottom','short']:['bottom','short','area','long'];let best=null,total=orders.length*heurs.length,done=0;for(const order of orders)for(const h of heurs){const r=pack(order,types,s,h);done++;if(better(r,best))best=r;postMessage({kind:'progress',done,total,bestSheets:best.sheets.length});}let extraAttempts=0;if(s.optimisation==='fine'&&types.length>1){postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Discovering reusable complementary pairs'});const compound=buildCompoundCandidate(instances,types,s);if(compound){extraAttempts=compound.compoundAttempts||0;if(better(compound,best))best=compound;}postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Final true-profile pair mating'});best.sheets=pairMateProfiles(best.sheets,s);best.sheets=compactProfiles(best.sheets,s,2);best=recomputeEnvelope(best,s);}postMessage({kind:'done',result:{...best,totalParts:instances.length,attempts:total+extraAttempts}});}catch(err){postMessage({kind:'error',message:err?.message||String(err)});}};
+onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let t=0;t<types.length;t++){const ty=types[t],os=orientations(ty,s.rotationStep,s.globalRotate&&ty.rotate);for(let q=0;q<ty.qty;q++)instances.push({id:id++,t,os,area:ty.area,bbox:ty.width*ty.height,max:Math.max(ty.width,ty.height)});}const orders=[ [...instances].sort((a,b)=>b.bbox-a.bbox||b.area-a.area), [...instances].sort((a,b)=>b.max-a.max||b.area-a.area), [...instances].sort((a,b)=>b.area-a.area||b.max-a.max), interleaveTypes(instances,'largeFirst'), interleaveTypes(instances,'smallFirst'), interleaveTypes(instances,'serpentine'), blockMix(instances,2), blockMix(instances,3) ];const extra=s.optimisation==='fine'?12:s.optimisation==='balanced'?5:0;for(let i=0;i<extra;i++)orders.push(shuffle(instances,7919*(i+1)+instances.length));const heurs=s.optimisation==='fast'?['bottom','short']:['bottom','short','area','long'];let best=null,total=orders.length*heurs.length,done=0;for(const order of orders)for(const h of heurs){const r=pack(order,types,s,h);done++;if(better(r,best))best=r;postMessage({kind:'progress',done,total,bestSheets:best.sheets.length});}let extraAttempts=0;if(s.optimisation==='fine'&&instances.length>1){postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Discovering reusable interlocking pairs'});const compound=buildCompoundCandidate(instances,types,s);const pairSpec=compound?compound._pair:null;if(compound){extraAttempts+=compound.compoundAttempts||0;if(better(compound,best))best=compound;}if(pairSpec){postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Searching repeating lattice patterns'});const lattice=buildLatticeCandidate(instances,types,s,pairSpec);if(lattice){extraAttempts+=lattice.latticeAttempts||0;if(better(lattice,best))best=lattice;}}if(compound)delete compound._pair;if(best._pair)delete best._pair;postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Filling gaps and final true-profile compaction'});best.sheets=pairMateProfiles(best.sheets,s);best.sheets=compactProfiles(best.sheets,s,2);best=recomputeEnvelope(best,s);}postMessage({kind:'done',result:{...best,totalParts:instances.length,attempts:total+extraAttempts}});}catch(err){postMessage({kind:'error',message:err?.message||String(err)});}};
 `;
 
   function dxfWorkerPayload(s){
@@ -760,7 +902,7 @@ onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let 
   }
   function hydrateWorkerResult(raw,s){
     const sheets=raw.sheets.map(sh=>({sheetIndex:sh.sheetIndex,partArea:sh.partArea,placements:sh.placements.map(p=>({kind:'dxf',id:p.id,typeIndex:p.typeIndex,file:s.parts[p.typeIndex].file,x:p.x,y:p.y,orientation:p.orientation,polygon:p.polygon}))}));
-    const result=summarizeResult(sheets,s,raw.totalParts,'dxf');result.attempts=raw.attempts;result.engine='mixed-type packing + reusable complementary pairs + true-profile compaction';return result;
+    const result=summarizeResult(sheets,s,raw.totalParts,'dxf');result.attempts=raw.attempts;result.engine='profile packing + reusable interlocking pairs + repeating lattice search + remainder fill + true-profile compaction';return result;
   }
   function cancelDxfNest(){if(state.dxfWorker){state.dxfWorker.terminate();state.dxfWorker=null;}els.nestDxfBtn.disabled=false;els.cancelDxfBtn.hidden=true;els.dxfProgress.textContent='Cancelled.';els.statusPill.textContent='Ready';}
   function nestDxfAsync(s){
@@ -845,13 +987,14 @@ onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let 
   function bounds(pts){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of pts){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY,w:maxX-minX,h:maxY-minY};}
 
   // ---------- Rendering ----------
-  function renderResults(){const {result,settings}=state;if(!result||!settings)return;state.sheetIndex=Math.min(state.sheetIndex,result.sheets.length-1);const current=result.sheets[state.sheetIndex],sheetArea=settings.sheetW*settings.sheetH,util=current.partArea/sheetArea;els.resultsPanel.hidden=false;els.resultSummary.textContent=result.mode==='dxf'?`${result.totalParts} imported part${result.totalParts===1?'':'s'} placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. ${result.engine||'Shape packing'}; best of ${result.attempts} attempts.`:`${result.totalParts} parts placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. Best of ${result.attempts} packing attempts.`;els.stats.innerHTML=[statHtml('Sheets',result.sheets.length),statHtml(result.mode==='dxf'?'Profile area use':'Overall material use',`${(result.overallUtilization*100).toFixed(1)}%`),statHtml('Shown sheet use',`${(util*100).toFixed(1)}%`),statHtml('Shown sheet waste',`${((1-util)*100).toFixed(1)}%`)].join('');els.sheetIndicator.textContent=`Sheet ${state.sheetIndex+1} of ${result.sheets.length}`;els.prevSheetBtn.disabled=state.sheetIndex===0;els.nextSheetBtn.disabled=state.sheetIndex===result.sheets.length-1;renderPreview(current,settings);els.resultsPanel.scrollIntoView({behavior:'smooth',block:'start'});}
+  function renderResults(){const {result,settings}=state;if(!result||!settings)return;state.sheetIndex=Math.min(state.sheetIndex,result.sheets.length-1);const current=result.sheets[state.sheetIndex],sheetArea=settings.sheetW*settings.sheetH,util=current.partArea/sheetArea;els.resultsPanel.hidden=false;els.resultSummary.textContent=result.mode==='dxf'?`${result.totalParts} CAD part${result.totalParts===1?'':'s'} placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. ${result.engine||'Shape packing'}; best of ${result.attempts} attempts.`:`${result.totalParts} parts placed across ${result.sheets.length} sheet${result.sheets.length===1?'':'s'}. Best of ${result.attempts} packing attempts.`;els.stats.innerHTML=[statHtml('Sheets',result.sheets.length),statHtml(result.mode==='dxf'?'Profile area use':'Overall material use',`${(result.overallUtilization*100).toFixed(1)}%`),statHtml('Shown sheet use',`${(util*100).toFixed(1)}%`),statHtml('Shown sheet waste',`${((1-util)*100).toFixed(1)}%`)].join('');els.sheetIndicator.textContent=`Sheet ${state.sheetIndex+1} of ${result.sheets.length}`;els.prevSheetBtn.disabled=state.sheetIndex===0;els.nextSheetBtn.disabled=state.sheetIndex===result.sheets.length-1;renderPreview(current,settings);els.resultsPanel.scrollIntoView({behavior:'smooth',block:'start'});}
   function statHtml(label,value){return`<div class="stat"><small>${label}</small><strong>${value}</strong></div>`;}
-  function renderPreview(sheet,s){const pad=Math.max(s.sheetW,s.sheetH)*.015;els.preview.setAttribute('viewBox',`${-pad} ${-pad} ${s.sheetW+2*pad} ${s.sheetH+2*pad}`);els.preview.replaceChildren();const sheetRect=svg('rect',{x:0,y:0,width:s.sheetW,height:s.sheetH,fill:'#fff',stroke:'#17212b','stroke-width':Math.max(s.sheetW,s.sheetH)/450});els.preview.appendChild(sheetRect);const palette=['#dce9ff','#e2f4ea','#fff0d4','#f1e4ff','#ffe1e1','#dff4f4','#ececec'];for(const p of sheet.placements){if(p.kind==='rect'){els.preview.appendChild(svg('rect',{x:p.x,y:p.y,width:p.w,height:p.h,fill:palette[p.typeIndex%palette.length],stroke:'#3a4754','stroke-width':Math.max(s.sheetW,s.sheetH)/900,'vector-effect':'non-scaling-stroke'}));}else{const pts=p.polygon.map(q=>`${q.x},${s.sheetH-q.y}`).join(' ');els.preview.appendChild(svg('polygon',{points:pts,fill:palette[p.typeIndex%palette.length],stroke:'#3a4754','stroke-width':Math.max(s.sheetW,s.sheetH)/900,'vector-effect':'non-scaling-stroke','fill-rule':'evenodd'}));}}}
+  function renderPreview(sheet,s){const pad=Math.max(s.sheetW,s.sheetH)*.015;els.preview.setAttribute('viewBox',`${-pad} ${-pad} ${s.sheetW+2*pad} ${s.sheetH+2*pad}`);els.preview.replaceChildren();const sw=Math.max(s.sheetW,s.sheetH)/900,sheetRect=svg('rect',{x:0,y:0,width:s.sheetW,height:s.sheetH,fill:'#fff',stroke:'#17212b','stroke-width':Math.max(s.sheetW,s.sheetH)/450});els.preview.appendChild(sheetRect);const palette=['#dce9ff','#e2f4ea','#fff0d4','#f1e4ff','#ffe1e1','#dff4f4','#ececec'];for(const p of sheet.placements){if(p.kind==='rect'){els.preview.appendChild(svg('rect',{x:p.x,y:p.y,width:p.w,height:p.h,fill:palette[p.typeIndex%palette.length],stroke:'#3a4754','stroke-width':sw,'vector-effect':'non-scaling-stroke'}));continue;}const outerPts=p.polygon.map(q=>`${q.x},${s.sheetH-q.y}`).join(' ');els.preview.appendChild(svg('polygon',{points:outerPts,fill:palette[p.typeIndex%palette.length],stroke:'#3a4754','stroke-width':sw,'vector-effect':'non-scaling-stroke'}));renderPreservedGeometry(p,s,sw);}}
+  function renderPreservedGeometry(p,s,sw){const tol=Math.max(0.02,state.settings?.tolerance||0.1);for(const e of p.file.entities){const raw=sampleEntityPath(e,tol);if(!raw||raw.length<2)continue;const pts=raw.map(q=>transformedPoint(q.x,q.y,p,0));const isClosed=e.type==='CIRCLE'||((e.type==='LWPOLYLINE'||e.type==='POLYLINE')&&e.closed)||(e.type==='SPLINE'&&((e.flags&1)||dist2(raw[0],raw.at(-1))<=tol*tol));let internal=false;if(isClosed&&pts.length>=3){const a=Math.abs(polygonArea(pts));internal=a<p.file.area*(1-1e-6)&&pts.every(q=>pointInPoly(q,p.polygon));}const attr={points:pts.map(q=>`${q.x},${s.sheetH-q.y}`).join(' '),fill:internal?'#fff':'none',stroke:'#3a4754','stroke-width':sw,'vector-effect':'non-scaling-stroke'};els.preview.appendChild(svg(isClosed?'polygon':'polyline',attr));}}
   function svg(tag,attrs){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;}
 
-  // ---------- conservative AutoCAD R12 ASCII DXF export ----------
-  function dxfHeader(){return['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','0','ENDSEC','0','SECTION','2','ENTITIES'];}
+  // ---------- ASCII DXF export: R12 normally, R2000 when SPLINE entities are present ----------
+  function dxfHeader(hasSpline=false){return['0','SECTION','2','HEADER','9','$ACADVER','1',hasSpline?'AC1015':'AC1009','0','ENDSEC','0','SECTION','2','ENTITIES'];}
   function r12Polyline(points,closed=true,bulges=[]){const out=['0','POLYLINE','8','0','66','1','70',closed?'1':'0'];for(let i=0;i<points.length;i++){const q=points[i];out.push('0','VERTEX','8','0','10',num(q.x),'20',num(q.y),'30','0');if(Math.abs(bulges[i]||0)>1e-12)out.push('42',num(bulges[i]));}out.push('0','SEQEND','8','0');return out;}
   function rectDxf(p,xOffset){return r12Polyline([{x:p.x+xOffset,y:p.y},{x:p.x+p.w+xOffset,y:p.y},{x:p.x+p.w+xOffset,y:p.y+p.h},{x:p.x+xOffset,y:p.y+p.h}],true);}
   function transformedPoint(x,y,p,xOffset){const file=p.file,o=p.orientation,local={x:x-file.baseMinX,y:y-file.baseMinY},r=rotatePoint(local,o.angle);return{x:r.x-o.rotMinX+p.x+xOffset,y:r.y-o.rotMinY+p.y};}
@@ -860,14 +1003,15 @@ onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let 
     if(e.type==='CIRCLE'){const c=transformedPoint(e.cx,e.cy,p,xOffset);return['0','CIRCLE','8','0','10',num(c.x),'20',num(c.y),'30','0','40',num(e.r)];}
     if(e.type==='ARC'){const c=transformedPoint(e.cx,e.cy,p,xOffset);return['0','ARC','8','0','10',num(c.x),'20',num(c.y),'30','0','40',num(e.r),'50',num(normDeg(e.a0+p.orientation.angle)),'51',num(normDeg(e.a1+p.orientation.angle))];}
     if(e.type==='LWPOLYLINE'||e.type==='POLYLINE'){const pts=e.vertices.map(v=>transformedPoint(v.x,v.y,p,xOffset));return r12Polyline(pts,e.closed,e.vertices.map(v=>v.bulge||0));}
+    if(e.type==='SPLINE'){const out=['0','SPLINE','8','0','100','AcDbEntity','100','AcDbSpline','210','0','220','0','230','1','70',String(e.flags||0),'71',String(e.degree),'72',String(e.knots.length),'73',String(e.controls.length),'74',String(e.fits?.length||0),'42','0.0000001','43','0.0000001','44','0.0000000001'];for(const k of e.knots)out.push('40',num(k));if(e.weights?.some(w=>Math.abs(w-1)>1e-12))for(const w of e.weights)out.push('41',num(w));for(const q0 of e.controls){const q=transformedPoint(q0.x,q0.y,p,xOffset);out.push('10',num(q.x),'20',num(q.y),'30',num(q0.z||0));}for(const q0 of e.fits||[]){const q=transformedPoint(q0.x,q0.y,p,xOffset);out.push('11',num(q.x),'21',num(q.y),'31',num(q0.z||0));}return out;}
     return[];
   }
   function normDeg(a){a%=360;if(a<0)a+=360;return a;}
   function validateR12Dxf(text){const raw=text.replace(/\r/g,'').split('\n').filter((_,i,a)=>!(i===a.length-1&&a[i]===''));if(raw.length%2)throw new Error('DXF validation failed: unmatched group-code/value pair.');if(raw[0]!=='0'||raw[1]!=='SECTION'||raw.at(-2)!=='0'||raw.at(-1)!=='EOF')throw new Error('DXF validation failed: file envelope is incomplete.');for(let i=0;i<raw.length;i+=2){const code=Number(raw[i]);if(!Number.isInteger(code))throw new Error('DXF validation failed: invalid group code.');if([10,11,20,21,30,31,40,42,50,51].includes(code)&&!Number.isFinite(Number(raw[i+1])))throw new Error('DXF validation failed: non-finite geometry value.');}return true;}
-  function buildDxf(sheets,s,allSheets){const lines=dxfHeader(),sep=Math.max(s.margin,s.gap,s.sheetW*.05,1);sheets.forEach((sheet,index)=>{const xOffset=allSheets?index*(s.sheetW+sep):0;for(const p of sheet.placements){if(p.kind==='rect')lines.push(...rectDxf(p,xOffset));else for(const e of p.file.entities)lines.push(...exportEntity(e,p,xOffset));}});lines.push('0','ENDSEC','0','EOF');const text=lines.join('\r\n')+'\r\n';validateR12Dxf(text);return text;}
+  function buildDxf(sheets,s,allSheets){const hasSpline=sheets.some(sh=>sh.placements.some(p=>p.kind!=='rect'&&p.file.entities.some(e=>e.type==='SPLINE'))),lines=dxfHeader(hasSpline),sep=Math.max(s.margin,s.gap,s.sheetW*.05,1);sheets.forEach((sheet,index)=>{const xOffset=allSheets?index*(s.sheetW+sep):0;for(const p of sheet.placements){if(p.kind==='rect')lines.push(...rectDxf(p,xOffset));else for(const e of p.file.entities)lines.push(...exportEntity(e,p,xOffset));}});lines.push('0','ENDSEC','0','EOF');const text=lines.join('\r\n')+'\r\n';validateR12Dxf(text);return text;}
   function downloadText(filename,text){const blob=new Blob([text],{type:'application/dxf'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-  function exportCurrentSheet(){if(!state.result)return;try{downloadText(`sheet-${state.sheetIndex+1}-R12.dxf`,buildDxf([state.result.sheets[state.sheetIndex]],state.settings,false));}catch(e){showError(e.message||String(e));}}
-  function exportAllSheets(){if(!state.result)return;try{downloadText('all-sheets-R12.dxf',buildDxf(state.result.sheets,state.settings,true));}catch(e){showError(e.message||String(e));}}
+  function exportCurrentSheet(){if(!state.result)return;try{downloadText(`sheet-${state.sheetIndex+1}.dxf`,buildDxf([state.result.sheets[state.sheetIndex]],state.settings,false));}catch(e){showError(e.message||String(e));}}
+  function exportAllSheets(){if(!state.result)return;try{downloadText('all-sheets.dxf',buildDxf(state.result.sheets,state.settings,true));}catch(e){showError(e.message||String(e));}}
 
   function runNest(kind){clearError();if(kind==='dxf'){try{nestDxfAsync(readDxfSettings());}catch(e){showError(e instanceof Error?e.message:String(e));}return;}els.statusPill.textContent='Calculating…';els.nestBtn.disabled=true;requestAnimationFrame(()=>{try{const settings=readRectSettings(),result=nestRectangles(settings);state.result=result;state.settings=settings;state.sheetIndex=0;els.statusPill.textContent='Nested';renderResults();}catch(e){showError(e instanceof Error?e.message:String(e));}finally{els.nestBtn.disabled=false;}});}
   function showError(message){els.errorBox.textContent=message;els.errorBox.hidden=false;els.statusPill.textContent='Check inputs';}
