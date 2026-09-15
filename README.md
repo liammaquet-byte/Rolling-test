@@ -1,11 +1,9 @@
-# Sheet Nester v3.2 — public/free release
+# Sheet Nester v3.3 — real flag regression release
 
-Fixes two issues found in the 120-flag stress test.
+This build was made against the supplied `New flag concept.DXF` and the failing 120-part export.
 
-- **DXF export:** spline jobs now emit one coherent AutoCAD R2000 DXF structure for every entity, including model-space ownership, entity handles and R2000 subclass records. The previous build changed the file version for SPLINE but left other entities in the older R12-style form.
-- **Clearance safety:** compound/lattice candidates are whole-sheet validated before selection; the final result is validated again; export is blocked if any overlap is detected. Actual preview collisions are highlighted red.
-- **Curve tolerance:** default reduced from 0.1 mm to 0.05 mm for better safety with the default 0.2 mm laser gap.
+**Nesting:** Fine mode now has a dedicated safe sheared-lattice search for repeated copies of one profile. Row offsets accumulate instead of alternating between only two positions, and several horizontal pitches are tested because a slightly wider column pitch can allow much tighter vertical interlocking. The existing full 0.2 mm pairwise clearance audit remains mandatory.
 
-At normal zoom a 0.2 mm clearance is often less than one screen pixel, so dark preview outlines can appear to touch even when the geometric audit reports zero overlaps.
+**DXF export:** spline jobs now use a full canonical AutoCAD R2000 document container (HEADER, CLASSES, standard TABLES, BLOCKS, ENTITIES and OBJECTS) rather than the hand-minimal container in v3.2. Generated entities belong to model space. Source SPLINE flags, degree, knots, weights and control points are retained.
 
-The v3.1 DWG worker/licensing arrangement is unchanged. Upload all files together.
+The DWG worker/licensing arrangement is unchanged. Upload every file in this package together.
