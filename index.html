@@ -343,7 +343,7 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
           <label><span>Rotation increment</span><select id="rotationStep"><option value="90" selected>90°</option><option value="45">45°</option><option value="30">30°</option><option value="15">15°</option><option value="10">10°</option><option value="5">5°</option><option value="2">2°</option><option value="1">1°</option></select></label>
           <label><span>Optimisation</span><select id="optimisation"><option value="fast">Fast</option><option value="balanced" selected>Balanced</option><option value="fine">Fine</option></select></label>
           <label><span>Curve collision tolerance</span><input id="curveTolerance" type="number" min="0.000001" step="any" value="0.1" /></label>
-          <p class="field-help">Packing runs in a background worker so the page stays responsive. Sheet count is the first priority. The optimiser now tries grouped, alternating, block-mixed and random part orders, then true-profile compaction pulls parts down/left until their sampled boundaries reach the requested gap. Fine mode tries additional mixed orders and compaction passes. Curve sampling is collision-only; exported CAD geometry is preserved.</p>
+          <p class="field-help">Packing runs in a background worker so the page stays responsive. Sheet count is the first priority. Fine mode now discovers efficient complementary A+B pairs before the final nest, packs repeated copies of the best pair as compound units, then expands them back into separate original parts and performs true-profile compaction. Pair discovery deliberately allows overlapping bounding boxes while enforcing the requested gap on the actual sampled profiles. Exported CAD geometry remains separate and unchanged.</p>
         </div>
 
         <div id="dxfEmpty" class="empty-state">Import one or more ASCII DXF files. Closed profiles may be a closed polyline/circle or a connected chain of LINE, ARC, and open polyline entities.</div>
@@ -611,9 +611,148 @@ function validAt(p,x,y,others,s){if(x<s.margin-EPS||y<s.margin-EPS||x+p.orientat
 function slideAxis(p,others,s,axis){const start=axis==='x'?p.x:p.y,limit=s.margin;if(start<=limit+EPS)return false;const minDim=Math.max(1,Math.min(p.orientation.w,p.orientation.h)),coarse=Math.max(s.gap||0.5,Math.min(8,minDim/8));let best=start,v=start-coarse;while(v>limit+EPS){const x=axis==='x'?v:p.x,y=axis==='y'?v:p.y,poly=validAt(p,x,y,others,s);if(poly){best=v;v-=coarse;}else break;}const atLimit=validAt(p,axis==='x'?limit:p.x,axis==='y'?limit:p.y,others,s);if(atLimit)best=limit;else{let step=coarse/2;while(step>0.05){const trial=Math.max(limit,best-step),poly=validAt(p,axis==='x'?trial:p.x,axis==='y'?trial:p.y,others,s);if(poly)best=trial;else step/=2;if(best<=limit+EPS)break;}}
 if(best<start-0.04){if(axis==='x')p.x=best;else p.y=best;p.polygon=polyAt(p,p.x,p.y);return true;}return false;}
 function compactProfiles(sheets,s,passes){for(const sh of sheets){for(let pass=0;pass<passes;pass++){let moved=false;const order=[...sh.placements].sort((a,b)=>a.y-b.y||a.x-b.x);for(const p of order){moved=slideAxis(p,sh.placements,s,'y')||moved;moved=slideAxis(p,sh.placements,s,'x')||moved;}if(!moved)break;}}return sheets;}
+function mateScore(sh,s,p,x,y){let mx=s.margin,my=s.margin;for(const q of sh.placements){const qx=q===p?x:q.x,qy=q===p?y:q.y;mx=Math.max(mx,qx+q.orientation.w);my=Math.max(my,qy+q.orientation.h);}return[(mx-s.margin)*(my-s.margin),my,mx,y,x];}
+function tupleLess(a,b){for(let i=0;i<a.length;i++)if(Math.abs(a[i]-b[i])>0.05)return a[i]<b[i];return false;}
+function pairMateProfiles(sheets,s){for(const sh of sheets){const ps=sh.placements;const movers=[...ps].sort((a,b)=>(b.y+b.orientation.h)-(a.y+a.orientation.h)||(b.x+b.orientation.w)-(a.x+a.orientation.w));for(const p of movers){const anchors=ps.filter(q=>q!==p&&q.typeIndex!==p.typeIndex).sort((a,b)=>(Math.abs(a.x-p.x)+Math.abs(a.y-p.y))-(Math.abs(b.x-p.x)+Math.abs(b.y-p.y))).slice(0,4);let best={x:p.x,y:p.y,poly:p.polygon,score:mateScore(sh,s,p,p.x,p.y)};for(const q of anchors){const minDim=Math.max(1,Math.min(p.orientation.w,p.orientation.h,q.orientation.w,q.orientation.h)),step=Math.max(s.gap||1,Math.min(18,minDim/4));const x0=Math.max(s.margin,q.x-p.orientation.w-s.gap),x1=Math.min(s.sheetW-s.margin-p.orientation.w,q.x+q.orientation.w+s.gap),y0=Math.max(s.margin,q.y-p.orientation.h-s.gap),y1=Math.min(s.sheetH-s.margin-p.orientation.h,q.y+q.orientation.h+s.gap);const xs=[],ys=[];for(let x=x0;x<=x1+EPS;x+=step)xs.push(x);for(let y=y0;y<=y1+EPS;y+=step)ys.push(y);xs.push(q.x-p.orientation.w-s.gap,q.x+q.orientation.w+s.gap,q.x);ys.push(q.y-p.orientation.h-s.gap,q.y+q.orientation.h+s.gap,q.y);for(const y of ys)for(const x of xs){const poly=validAt(p,x,y,ps,s);if(!poly)continue;const score=mateScore(sh,s,p,x,y);if(tupleLess(score,best.score))best={x,y,poly,score};}}
+      if(Math.abs(best.x-p.x)>0.05||Math.abs(best.y-p.y)>0.05){p.x=best.x;p.y=best.y;p.polygon=best.poly;slideAxis(p,ps,s,'y');slideAxis(p,ps,s,'x');}}
+  }return sheets;}
+function recomputeEnvelope(r,s){let envelope=0;for(const sh of r.sheets){let mx=s.margin,my=s.margin;for(const p of sh.placements){mx=Math.max(mx,p.x+p.orientation.w);my=Math.max(my,p.y+p.orientation.h);}envelope+=(mx-s.margin)*(my-s.margin);}r.envelope=envelope;return r;}
+function angleDelta(a,b){let d=((a-b)%360+540)%360-180;return Math.abs(d);}
+function closestOrientation(os,angle){let best=os[0],d=Infinity;for(const o of os){const q=angleDelta(o.angle,angle);if(q<d){d=q;best=o;}}return best;}
+function translated(poly,x,y){return poly.map(p=>({x:p.x+x,y:p.y+y}));}
+function pairUnionBox(a,b,x,y){const minX=Math.min(0,x),minY=Math.min(0,y),maxX=Math.max(a.w,x+b.w),maxY=Math.max(a.h,y+b.h);return{minX,minY,maxX,maxY,w:maxX-minX,h:maxY-minY,area:(maxX-minX)*(maxY-minY)};}
+function discoverPairTemplate(typeA,typeB,osA,osB,s){
+  const a=closestOrientation(osA,0),angleStep=Math.max(s.rotationStep,5);
+  let candidates=osB.filter(o=>Math.abs((o.angle/angleStep)-Math.round(o.angle/angleStep))<1e-6);
+  if(!candidates.length)candidates=osB;
+  let best=null;
+  for(const b of candidates){
+    const minDim=Math.max(1,Math.min(a.w,a.h,b.w,b.h)),step=Math.max(s.gap||1,Math.min(14,minDim/6));
+    const x0=-b.w-s.gap,x1=a.w+s.gap,y0=-b.h-s.gap,y1=a.h+s.gap;
+    const xs=[],ys=[];
+    for(let x=x0;x<=x1+EPS;x+=step)xs.push(x);
+    for(let y=y0;y<=y1+EPS;y+=step)ys.push(y);
+    xs.push(-b.w-s.gap,0,a.w-b.w,a.w+s.gap,(a.w-b.w)/2);
+    ys.push(-b.h-s.gap,0,a.h-b.h,a.h+s.gap,(a.h-b.h)/2);
+    for(const y of ys)for(const x of xs){
+      const bp=translated(b.points,x,y);
+      if(polyTooClose(a.points,bp,s.gap))continue;
+      const box=pairUnionBox(a,b,x,y);
+      const score=[box.area,box.h,box.w];
+      if(!best||tupleLess(score,best.score))best={a,b,x,y,box,score};
+    }
+  }
+  if(!best)return null;
+  // Refine translation around the best coarse solution.
+  let bx=best.x,by=best.y,box=best.box,step=Math.max(s.gap||1,Math.min(10,Math.min(a.w,a.h,best.b.w,best.b.h)/8));
+  while(step>0.35){
+    let changed=false;
+    for(const dx of [-step,0,step])for(const dy of [-step,0,step]){
+      const x=bx+dx,y=by+dy,bp=translated(best.b.points,x,y);
+      if(polyTooClose(a.points,bp,s.gap))continue;
+      const q=pairUnionBox(a,best.b,x,y),score=[q.area,q.h,q.w];
+      if(tupleLess(score,[box.area,box.h,box.w])){bx=x;by=y;box=q;changed=true;}
+    }
+    if(!changed)step/=2;
+  }
+  const ax=-box.minX,ay=-box.minY,bxN=bx-box.minX,byN=by-box.minY;
+  const separate=a.w*a.h+best.b.w*best.b.h;
+  return{w:box.w,h:box.h,area:box.area,saving:separate-box.area,children:[
+    {typeIndex:typeA.index,angle:a.angle,x:ax,y:ay},
+    {typeIndex:typeB.index,angle:best.b.angle,x:bxN,y:byN}
+  ]};
+}
+function rotateXY(x,y,deg){const a=deg*Math.PI/180,c=Math.cos(a),sn=Math.sin(a);return{x:x*c-y*sn,y:x*sn+y*c};}
+function compoundVariants(template,osByType,s,canRotate){
+  const turns=(s.globalRotate&&canRotate)?[0,90,180,270]:[0],out=[];
+  for(const turn of turns){
+    const childRaw=[];
+    for(const ch of template.children){
+      const o0=closestOrientation(osByType[ch.typeIndex],ch.angle);
+      const abs=o0.points.map(p=>({x:p.x+ch.x,y:p.y+ch.y})).map(p=>rotateXY(p.x,p.y,turn));
+      childRaw.push({typeIndex:ch.typeIndex,angle:ch.angle+turn,poly:abs});
+    }
+    const all=childRaw.flatMap(c=>c.poly),bb=bounds(all),children=[];
+    for(const ch of childRaw){
+      const p=ch.poly.map(q=>({x:q.x-bb.minX,y:q.y-bb.minY})),pb=bounds(p),o=closestOrientation(osByType[ch.typeIndex],ch.angle);
+      children.push({typeIndex:ch.typeIndex,orientation:o,dx:pb.minX,dy:pb.minY});
+    }
+    out.push({w:bb.w,h:bb.h,children});
+  }
+  return out;
+}
+function singleVariants(inst){return inst.os.map(o=>({w:o.w,h:o.h,children:[{typeIndex:inst.t,orientation:o,dx:0,dy:0,id:inst.id}]}));}
+function packUnits(items,types,s,heur){
+  const W=s.sheetW-2*s.margin+s.gap,H=s.sheetH-2*s.margin+s.gap,bins=[];
+  for(const item of items){
+    let best=null;
+    for(let bi=0;bi<bins.length;bi++){
+      for(const v of item.variants){const sc=bins[bi].score(v.w+s.gap,v.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi,bin:bins[bi],sc,v};}
+      if(best)break;
+    }
+    if(!best){
+      const bin=new Bin(W,H,heur);bins.push(bin);
+      for(const v of item.variants){const sc=bin.score(v.w+s.gap,v.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi:bins.length-1,bin,sc,v};}
+    }
+    if(!best)throw new Error('A compound part does not fit the usable sheet area.');
+    best.bin.place({x:best.sc.x,y:best.sc.y,w:best.v.w+s.gap,h:best.v.h+s.gap,item,v:best.v});
+  }
+  let nextId=1000000;
+  const sheets=bins.map((b,si)=>{
+    const placements=[];let partArea=0;
+    for(const r of b.used){
+      for(const ch of r.v.children){
+        const x=r.x+s.margin+ch.dx,y=r.y+s.margin+ch.dy,o=ch.orientation;
+        placements.push({id:ch.id||nextId++,typeIndex:ch.typeIndex,x,y,orientation:o,polygon:o.points.map(p=>({x:p.x+x,y:p.y+y}))});
+        partArea+=types[ch.typeIndex].area;
+      }
+    }
+    return{sheetIndex:si,placements,partArea};
+  });
+  const result={sheets,envelope:0,lastCount:sheets.at(-1)?.placements.length||0};
+  return recomputeEnvelope(result,s);
+}
+function buildCompoundCandidate(instances,types,s){
+  if(types.length<2)return null;
+  const byType=types.map(()=>[]);
+  for(const inst of instances)byType[inst.t].push(inst);
+  const osByType=types.map((_,i)=>byType[i][0]?.os||[]);
+  let bestPair=null;
+  for(let a=0;a<types.length;a++)for(let b=a+1;b<types.length;b++){
+    if(!byType[a].length||!byType[b].length)continue;
+    const ta={...types[a],index:a},tb={...types[b],index:b};
+    const tpl=discoverPairTemplate(ta,tb,osByType[a],osByType[b],s);
+    const count=Math.min(byType[a].length,byType[b].length);
+    if(tpl&&tpl.saving>EPS){
+      const value=tpl.saving*count;
+      if(!bestPair||value>bestPair.value)bestPair={a,b,tpl,count,value};
+    }
+  }
+  if(!bestPair)return null;
+  const used=new Set(),items=[];
+  const canRotate=types[bestPair.a].rotate&&types[bestPair.b].rotate;
+  const pairVars=compoundVariants(bestPair.tpl,osByType,s,canRotate);
+  for(let i=0;i<bestPair.count;i++){
+    const ia=byType[bestPair.a][i],ib=byType[bestPair.b][i];used.add(ia.id);used.add(ib.id);
+    // IDs are attached per pair so expansion remains unique.
+    const vars=pairVars.map(v=>({...v,children:v.children.map(ch=>({...ch,id:ch.typeIndex===bestPair.a?ia.id:ib.id}))}));
+    items.push({kind:'pair',variants:vars,area:ia.area+ib.area});
+  }
+  for(const inst of instances)if(!used.has(inst.id))items.push({kind:'single',variants:singleVariants(inst),area:inst.area});
+  const orders=[
+    [...items].sort((a,b)=>b.area-a.area),
+    [...items].sort((a,b)=>Math.max(...b.variants.map(v=>v.w*v.h))-Math.max(...a.variants.map(v=>v.w*v.h))),
+    interleaveTypes(items.map((x,i)=>({wrap:x,t:x.kind==='pair'?0:1,bbox:x.area,area:x.area})), 'largeFirst').map(x=>x.wrap)
+  ];
+  let best=null,attempts=0;
+  for(const order of orders)for(const h of ['bottom','short','area','long']){
+    const r=packUnits(order,types,s,h);attempts++;if(better(r,best))best=r;
+  }
+  best.compoundAttempts=attempts;best.pairSaving=bestPair.tpl.saving;return best;
+}
 function pack(order,types,s,heur){const W=s.sheetW-2*s.margin+s.gap,H=s.sheetH-2*s.margin+s.gap,bins=[];for(const inst of order){let best=null;for(let bi=0;bi<bins.length;bi++){for(const o of inst.os){const sc=bins[bi].score(o.w+s.gap,o.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi,bin:bins[bi],sc,o};}if(best)break;}if(!best){const bin=new Bin(W,H,heur);bins.push(bin);for(const o of inst.os){const sc=bin.score(o.w+s.gap,o.h+s.gap);if(sc&&(!best||sc.a<best.sc.a-EPS||(Math.abs(sc.a-best.sc.a)<EPS&&sc.b<best.sc.b-EPS)))best={bi:bins.length-1,bin,sc,o};}}if(!best)throw new Error(types[inst.t].name+' does not fit the usable sheet area at the permitted rotations.');const r={x:best.sc.x,y:best.sc.y,w:best.o.w+s.gap,h:best.o.h+s.gap,id:inst.id,t:inst.t,o:best.o};best.bin.place(r);}
 let sheets=bins.map((b,si)=>({sheetIndex:si,placements:b.used.map(r=>({id:r.id,typeIndex:r.t,x:r.x+s.margin,y:r.y+s.margin,orientation:r.o,polygon:r.o.points.map(p=>({x:p.x+r.x+s.margin,y:p.y+r.y+s.margin}))})),partArea:b.used.reduce((z,r)=>z+types[r.t].area,0)}));sheets=compactProfiles(sheets,s,s.optimisation==='fine'?3:s.optimisation==='balanced'?2:1);let envelope=0;for(const sh of sheets){let mx=s.margin,my=s.margin;for(const p of sh.placements){mx=Math.max(mx,p.x+p.orientation.w);my=Math.max(my,p.y+p.orientation.h);}envelope+=(mx-s.margin)*(my-s.margin);}return{sheets,envelope,lastCount:sheets.at(-1)?.placements.length||0};}
-onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let t=0;t<types.length;t++){const ty=types[t],os=orientations(ty,s.rotationStep,s.globalRotate&&ty.rotate);for(let q=0;q<ty.qty;q++)instances.push({id:id++,t,os,area:ty.area,bbox:ty.width*ty.height,max:Math.max(ty.width,ty.height)});}const orders=[ [...instances].sort((a,b)=>b.bbox-a.bbox||b.area-a.area), [...instances].sort((a,b)=>b.max-a.max||b.area-a.area), [...instances].sort((a,b)=>b.area-a.area||b.max-a.max), interleaveTypes(instances,'largeFirst'), interleaveTypes(instances,'smallFirst'), interleaveTypes(instances,'serpentine'), blockMix(instances,2), blockMix(instances,3) ];const extra=s.optimisation==='fine'?12:s.optimisation==='balanced'?5:0;for(let i=0;i<extra;i++)orders.push(shuffle(instances,7919*(i+1)+instances.length));const heurs=s.optimisation==='fast'?['bottom','short']:['bottom','short','area','long'];let best=null,total=orders.length*heurs.length,done=0;for(const order of orders)for(const h of heurs){const r=pack(order,types,s,h);done++;if(better(r,best))best=r;postMessage({kind:'progress',done,total,bestSheets:best.sheets.length});}postMessage({kind:'done',result:{...best,totalParts:instances.length,attempts:total}});}catch(err){postMessage({kind:'error',message:err?.message||String(err)});}};
+onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let t=0;t<types.length;t++){const ty=types[t],os=orientations(ty,s.rotationStep,s.globalRotate&&ty.rotate);for(let q=0;q<ty.qty;q++)instances.push({id:id++,t,os,area:ty.area,bbox:ty.width*ty.height,max:Math.max(ty.width,ty.height)});}const orders=[ [...instances].sort((a,b)=>b.bbox-a.bbox||b.area-a.area), [...instances].sort((a,b)=>b.max-a.max||b.area-a.area), [...instances].sort((a,b)=>b.area-a.area||b.max-a.max), interleaveTypes(instances,'largeFirst'), interleaveTypes(instances,'smallFirst'), interleaveTypes(instances,'serpentine'), blockMix(instances,2), blockMix(instances,3) ];const extra=s.optimisation==='fine'?12:s.optimisation==='balanced'?5:0;for(let i=0;i<extra;i++)orders.push(shuffle(instances,7919*(i+1)+instances.length));const heurs=s.optimisation==='fast'?['bottom','short']:['bottom','short','area','long'];let best=null,total=orders.length*heurs.length,done=0;for(const order of orders)for(const h of heurs){const r=pack(order,types,s,h);done++;if(better(r,best))best=r;postMessage({kind:'progress',done,total,bestSheets:best.sheets.length});}let extraAttempts=0;if(s.optimisation==='fine'&&types.length>1){postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Discovering reusable complementary pairs'});const compound=buildCompoundCandidate(instances,types,s);if(compound){extraAttempts=compound.compoundAttempts||0;if(better(compound,best))best=compound;}postMessage({kind:'progress',done:total,total:total,bestSheets:best.sheets.length,stage:'Final true-profile pair mating'});best.sheets=pairMateProfiles(best.sheets,s);best.sheets=compactProfiles(best.sheets,s,2);best=recomputeEnvelope(best,s);}postMessage({kind:'done',result:{...best,totalParts:instances.length,attempts:total+extraAttempts}});}catch(err){postMessage({kind:'error',message:err?.message||String(err)});}};
 `;
 
   function dxfWorkerPayload(s){
@@ -621,14 +760,14 @@ onmessage=e=>{try{const {settings:s,types}=e.data,instances=[];let id=1;for(let 
   }
   function hydrateWorkerResult(raw,s){
     const sheets=raw.sheets.map(sh=>({sheetIndex:sh.sheetIndex,partArea:sh.partArea,placements:sh.placements.map(p=>({kind:'dxf',id:p.id,typeIndex:p.typeIndex,file:s.parts[p.typeIndex].file,x:p.x,y:p.y,orientation:p.orientation,polygon:p.polygon}))}));
-    const result=summarizeResult(sheets,s,raw.totalParts,'dxf');result.attempts=raw.attempts;result.engine='background mixed-type sheet-first packing + true-profile compaction';return result;
+    const result=summarizeResult(sheets,s,raw.totalParts,'dxf');result.attempts=raw.attempts;result.engine='mixed-type packing + reusable complementary pairs + true-profile compaction';return result;
   }
   function cancelDxfNest(){if(state.dxfWorker){state.dxfWorker.terminate();state.dxfWorker=null;}els.nestDxfBtn.disabled=false;els.cancelDxfBtn.hidden=true;els.dxfProgress.textContent='Cancelled.';els.statusPill.textContent='Ready';}
   function nestDxfAsync(s){
     if(state.dxfWorker)state.dxfWorker.terminate();
     const url=URL.createObjectURL(new Blob([DXF_WORKER_SOURCE],{type:'text/javascript'})),worker=new Worker(url);URL.revokeObjectURL(url);state.dxfWorker=worker;
     els.nestDxfBtn.disabled=true;els.cancelDxfBtn.hidden=false;els.dxfProgress.textContent='Starting background optimiser…';els.statusPill.textContent='Calculating…';
-    worker.onmessage=e=>{const m=e.data;if(m.kind==='progress'){els.dxfProgress.textContent=`Attempt ${m.done} of ${m.total} · best so far: ${m.bestSheets} sheet${m.bestSheets===1?'':'s'}`;return;}if(m.kind==='error'){showError(m.message);cancelDxfNest();return;}if(m.kind==='done'){const result=hydrateWorkerResult(m.result,s);state.result=result;state.settings=s;state.sheetIndex=0;state.dxfWorker=null;worker.terminate();els.nestDxfBtn.disabled=false;els.cancelDxfBtn.hidden=true;els.dxfProgress.textContent=`Finished ${result.attempts} packing attempts.`;els.statusPill.textContent='Nested';renderResults();}};
+    worker.onmessage=e=>{const m=e.data;if(m.kind==='progress'){els.dxfProgress.textContent=m.stage?`${m.stage} · ${m.bestSheets} sheet${m.bestSheets===1?'':'s'} so far`:`Attempt ${m.done} of ${m.total} · best so far: ${m.bestSheets} sheet${m.bestSheets===1?'':'s'}`;return;}if(m.kind==='error'){showError(m.message);cancelDxfNest();return;}if(m.kind==='done'){const result=hydrateWorkerResult(m.result,s);state.result=result;state.settings=s;state.sheetIndex=0;state.dxfWorker=null;worker.terminate();els.nestDxfBtn.disabled=false;els.cancelDxfBtn.hidden=true;els.dxfProgress.textContent=`Finished ${result.attempts} packing attempts.`;els.statusPill.textContent='Nested';renderResults();}};
     worker.onerror=e=>{showError('Background optimiser failed: '+(e.message||'unknown worker error'));cancelDxfNest();};worker.postMessage(dxfWorkerPayload(s));
   }
 

@@ -1,14 +1,10 @@
-# Sheet Nester v2
+# Sheet Nester v2.4
 
-Static, client-only GitHub Pages app. No DXF is uploaded or stored.
+Client-only GitHub Pages nester. DXF files remain in the browser.
 
-## DXF v2 changes
-- DXF optimisation runs in a Web Worker so the UI remains responsive.
-- Sheet count is the primary packing objective.
-- MaxRects-based packing works from a corner and tries multiple orderings/heuristics.
-- Rotation defaults to 90 degrees; 45/30/15/10/5 are optional.
-- Original LINE, ARC, CIRCLE and polyline geometry is preserved for output.
-- Export is conservative AutoCAD R12 ASCII DXF (AC1009), using LINE/ARC/CIRCLE/POLYLINE/VERTEX/SEQEND entities only.
-- A structural validation pass runs before each DXF download.
+## v2.4
+Fine mode now includes reusable compound-pair nesting. The optimiser searches different DXF types for a compact collision-free A+B relationship, including positions where the parts' bounding boxes overlap. It then packs repeated copies of the best complementary pair as a temporary compound unit, expands every unit back into its two separate original parts, and runs the existing true-profile compaction/pair-mating cleanup.
 
-For irregular profiles the optimiser uses the profile's rotated bounding box for guaranteed non-overlap. This is intentionally conservative: it prioritises reliable sheet-count reduction and responsiveness over deep interlocking of concave shapes.
+The compound relationship exists only inside the optimiser. DXF export still writes every original LINE/ARC/CIRCLE/POLYLINE part separately with its own final transform.
+
+The 1200 × 600 default sheet, 1°/2° rotation options, background worker, mixed-file orderings and conservative R12 ASCII DXF export remain in place.
