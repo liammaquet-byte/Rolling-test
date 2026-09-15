@@ -65,3 +65,12 @@ Then open `http://localhost:8000`.
 5. Select your main branch and `/ (root)`, then save.
 
 No build step or backend is required.
+
+
+## iPad / Safari deployment note
+
+`index.html` is now fully self-contained: CSS and JavaScript are embedded in the page. This avoids GitHub Pages path/caching issues where `app.js` or `styles.css` may fail to load. If the status pill remains **Loading app…**, JavaScript did not execute.
+
+
+## DXF boundary update
+The importer now recognises closed profiles made from connected LINE, ARC, and open polyline entities as well as closed polylines/circles. Original CAD entities are preserved for DXF export; curve sampling is used only for nesting collision calculations.

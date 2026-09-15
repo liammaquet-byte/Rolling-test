@@ -345,7 +345,7 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
           <p class="field-help">Tolerance only controls temporary curve sampling used for collision tests. Exported arcs/circles/polylines retain their original geometry.</p>
         </div>
 
-        <div id="dxfEmpty" class="empty-state">Import one or more ASCII DXF files containing a closed LWPOLYLINE, closed POLYLINE, or CIRCLE outer profile.</div>
+        <div id="dxfEmpty" class="empty-state">Import one or more ASCII DXF files. Closed profiles may be a closed polyline/circle or a connected chain of LINE, ARC, and open polyline entities.</div>
         <div class="parts-table-wrap" id="dxfTableWrap" hidden>
           <table class="parts-table">
             <thead><tr><th>File</th><th>Detected size</th><th>Qty</th><th class="rotate-column">Rotate</th><th></th></tr></thead>
@@ -519,11 +519,18 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
     }
     if(unsupported.size) throw new Error(`${name}: unsupported design entit${unsupported.size===1?'y':'ies'} ${[...unsupported].join(', ')}. File rejected so geometry is not silently altered.`);
     const clean=entities.filter(Boolean); if(!clean.length)throw new Error(`${name}: no supported geometry found.`);
-    const closed=clean.map((e,index)=>({e,index,poly:sampleClosedEntity(e,tolerance)})).filter(x=>x.poly&&x.poly.length>=3);
-    if(!closed.length)throw new Error(`${name}: no closed LWPOLYLINE, closed POLYLINE, or CIRCLE was found for the nesting boundary.`);
+    // Many CAD programs export one visually closed profile as separate LINE/ARC
+    // entities. Preserve those original entities for output, but stitch their
+    // endpoints into a temporary contour for nesting/collision detection.
+    const closed=clean.map((e,index)=>({e,index,poly:sampleClosedEntity(e,tolerance),source:'closed entity'})).filter(x=>x.poly&&x.poly.length>=3);
+    const allBounds=geometryBounds(clean,tolerance);
+    const scale=Math.max(allBounds?.w||0,allBounds?.h||0,1);
+    const joinTolerance=Math.max(1e-7*scale, Math.min(tolerance*0.1, scale*1e-4));
+    for(const loop of stitchEntityLoops(clean,tolerance,joinTolerance)) closed.push({e:null,index:-1,poly:loop,source:'connected LINE/ARC chain'});
+    if(!closed.length)throw new Error(`${name}: no closed nesting boundary was found. The importer accepts a closed LWPOLYLINE/POLYLINE/CIRCLE or a connected end-to-end chain of LINE, ARC, and open polyline entities.`);
     for(const c of closed)c.area=Math.abs(polygonArea(c.poly)); closed.sort((a,b)=>b.area-a.area); const outer=closed[0], bb=bounds(outer.poly);
     if(!(bb.w>EPS&&bb.h>EPS))throw new Error(`${name}: the detected outer profile has zero width or height.`);
-    return {name,entities:clean,outerIndex:outer.index,outerPoints:outer.poly,baseMinX:bb.minX,baseMinY:bb.minY,width:bb.w,height:bb.h,area:outer.area,entityCount:clean.length};
+    return {name,entities:clean,outerIndex:outer.index,outerPoints:outer.poly,baseMinX:bb.minX,baseMinY:bb.minY,width:bb.w,height:bb.h,area:outer.area,entityCount:clean.length,boundarySource:outer.source};
   }
   function val(data,code,def=0){const p=data.find(x=>x.code===code);return p?+p.value:def;}
   function parseEntity(type,data){
@@ -538,6 +545,31 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
   }
   function parsePolylineEntity(header,verts){ const vertices=verts.map(v=>({x:val(v,10),y:val(v,20),bulge:val(v,42,0)})); return{type:'POLYLINE',vertices,closed:(val(header,70,0)&1)!==0}; }
   function sampleClosedEntity(e,tol){ if(e.type==='CIRCLE')return sampleCircle(e.cx,e.cy,e.r,tol); if((e.type==='LWPOLYLINE'||e.type==='POLYLINE')&&e.closed)return samplePolyline(e.vertices,true,tol); return null; }
+  function geometryBounds(entities,tol){const pts=[];for(const e of entities){const p=sampleEntityPath(e,tol);if(p)pts.push(...p);}return pts.length?bounds(pts):null;}
+  function sampleEntityPath(e,tol){
+    if(e.type==='LINE')return[{x:e.x1,y:e.y1},{x:e.x2,y:e.y2}];
+    if(e.type==='ARC')return sampleArc(e,tol);
+    if(e.type==='CIRCLE')return sampleCircle(e.cx,e.cy,e.r,tol);
+    if(e.type==='LWPOLYLINE'||e.type==='POLYLINE')return samplePolyline(e.vertices,e.closed,tol);
+    return null;
+  }
+  function sampleArc(e,tol){let a0=e.a0*Math.PI/180,a1=e.a1*Math.PI/180,sweep=a1-a0;while(sweep<=0)sweep+=Math.PI*2;const n=curveSegments(e.r,sweep,tol,2),pts=[];for(let i=0;i<=n;i++){const a=a0+sweep*i/n;pts.push({x:e.cx+e.r*Math.cos(a),y:e.cy+e.r*Math.sin(a)});}return pts;}
+  function stitchEntityLoops(entities,tol,joinTol){
+    const edges=[];
+    for(let index=0;index<entities.length;index++){const e=entities[index];if(e.type==='CIRCLE'||((e.type==='LWPOLYLINE'||e.type==='POLYLINE')&&e.closed))continue;const pts=sampleEntityPath(e,tol);if(!pts||pts.length<2)continue;edges.push({index,pts,a:pts[0],b:pts[pts.length-1]});}
+    if(!edges.length)return[];
+    const nodes=[];
+    const nodeFor=p=>{let best=-1,bestD=joinTol*joinTol;for(let i=0;i<nodes.length;i++){const d=dist2(p,nodes[i].p);if(d<=bestD){best=i;bestD=d;}}if(best>=0){const n=nodes[best];n.p={x:(n.p.x*n.count+p.x)/(n.count+1),y:(n.p.y*n.count+p.y)/(n.count+1)};n.count++;return best;}nodes.push({p:{x:p.x,y:p.y},count:1,edges:[]});return nodes.length-1;};
+    for(let i=0;i<edges.length;i++){edges[i].na=nodeFor(edges[i].a);edges[i].nb=nodeFor(edges[i].b);nodes[edges[i].na].edges.push(i);nodes[edges[i].nb].edges.push(i);}
+    const globallySeen=new Set(),loops=[];
+    for(let startEdge=0;startEdge<edges.length;startEdge++){if(globallySeen.has(startEdge))continue;const componentEdges=[],componentSet=new Set(),componentNodes=new Set(),stack=[startEdge];while(stack.length){const ei=stack.pop();if(componentSet.has(ei))continue;componentSet.add(ei);componentEdges.push(ei);const ed=edges[ei];for(const ni of [ed.na,ed.nb]){componentNodes.add(ni);for(const next of nodes[ni].edges)if(!componentSet.has(next))stack.push(next);}}
+      if([...componentNodes].some(ni=>nodes[ni].edges.filter(ei=>componentSet.has(ei)).length!==2))continue;
+      const first=componentEdges[0],firstEdge=edges[first],startNode=firstEdge.na;let currentNode=startNode,currentEdge=first,poly=[],ok=true;const used=new Set();
+      while(true){if(used.has(currentEdge)){ok=false;break;}used.add(currentEdge);const ed=edges[currentEdge],forward=ed.na===currentNode,path=forward?ed.pts:[...ed.pts].reverse();if(!poly.length)poly.push(...path);else poly.push(...path.slice(1));currentNode=forward?ed.nb:ed.na;if(currentNode===startNode)break;const next=nodes[currentNode].edges.find(ei=>componentSet.has(ei)&&!used.has(ei));if(next===undefined){ok=false;break;}currentEdge=next;}
+      if(ok&&used.size===componentEdges.length&&poly.length>=4){for(const ei of componentEdges)globallySeen.add(ei);if(dist2(poly[0],poly[poly.length-1])<=joinTol*joinTol)poly.pop();if(poly.length>=3&&Math.abs(polygonArea(poly))>EPS)loops.push(poly);}
+    }
+    return loops;
+  }
   function sampleCircle(cx,cy,r,tol){const n=curveSegments(r,Math.PI*2,tol,24);const pts=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n;pts.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});}return pts;}
   function curveSegments(r,sweep,tol,minSeg=4){ if(!(r>0))return minSeg; const t=Math.max(1e-9,Math.min(tol,r*0.5)); const maxAng=2*Math.acos(Math.max(-1,Math.min(1,1-t/r))); return Math.min(4096,Math.max(minSeg,Math.ceil(Math.abs(sweep)/Math.max(maxAng,Math.PI/1800)))); }
   function samplePolyline(vs,closed,tol){ const out=[]; const count=closed?vs.length:vs.length-1; for(let i=0;i<count;i++){const a=vs[i],b=vs[(i+1)%vs.length]; if(!out.length)out.push({x:a.x,y:a.y}); if(Math.abs(a.bulge||0)<1e-12)out.push({x:b.x,y:b.y}); else out.push(...sampleBulge(a,b,a.bulge,tol).slice(1));} if(!closed&&vs.length)out.push({x:vs.at(-1).x,y:vs.at(-1).y}); if(closed&&out.length>1&&dist2(out[0],out.at(-1))<EPS*EPS)out.pop(); return out; }
