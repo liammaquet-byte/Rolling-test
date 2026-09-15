@@ -337,7 +337,8 @@ footer { padding: 9px 4px 0; font-size: 0.82rem; text-align: center; }
           <p>Select one or more ASCII DXF or binary DWG files from this device or Files. Each file is treated as one part shape.</p>
         </div>
 
-        <div class="privacy-note"><strong>Local processing:</strong> Drawing bytes stay in this browser. DWG decoding uses a WebAssembly decoder loaded on demand; the drawing itself is never uploaded.</div>
+        <div class="privacy-note"><strong>Local processing:</strong> Drawing bytes stay in this browser. DWG decoding runs in a separate Web Worker using a WebAssembly decoder loaded on demand; the drawing itself is never uploaded.</div>
+        <p style="font-size:12px;color:#667085;margin:8px 0 0">DWG is the native file format for Autodesk AutoCAD software and is a trademark of Autodesk, Inc. Sheet Nester is independent and is not affiliated with or endorsed by Autodesk. DWG decoding uses GPL-licensed LibreDWG software. See <a href="THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">third-party notices</a>.</p>
 
         <div class="dxf-options">
           <label><span>Rotation increment</span><select id="rotationStep"><option value="90">90°</option><option value="45">45°</option><option value="30">30°</option><option value="15">15°</option><option value="10">10°</option><option value="5">5°</option><option value="2">2°</option><option value="1" selected>1°</option></select></label>
